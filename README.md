@@ -1,5 +1,33 @@
 # Text-to-SQL 本地验证环境
 
+## Benchmark 测试结果
+
+### 执行准确率对比 (Execution Accuracy)
+
+在 PostgreSQL、MySQL、ClickHouse 三种数据库上测试 12 个中文问题（简单到复杂）：
+
+| 模型 | PostgreSQL | MySQL | ClickHouse | 平均 |
+|-----|------------|-------|------------|------|
+| SQLCoder-7B | 58.3% | 33.3% | 8.3% | 33.3% |
+| DeepSeek-Coder-6.7B | 75.0% | 66.7% | 66.7% | 69.5% |
+| **Qwen2.5-Coder-7B** | **75.0%** | **75.0%** | **75.0%** | **75.0%** |
+
+### 关键发现
+
+| 模型 | 优势 | 劣势 |
+|-----|------|------|
+| **Qwen2.5-Coder-7B** | 跨数据库最稳定，中文理解最好，推荐首选 | - |
+| DeepSeek-Coder-6.7B | 多数据库适应好，推理能力强 | MySQL/ClickHouse略弱 |
+| SQLCoder-7B | PostgreSQL专项优化 | 生成PG特有语法，其他库极差 |
+
+### 测试环境
+
+- GPU: RTX 3090 24GB
+- 数据库: Docker (PostgreSQL 15, MySQL 8.0, ClickHouse latest)
+- 评估方法: 真实执行准确率 (Execution Accuracy)
+
+---
+
 ## 快速开始
 
 ### 1. 启动数据库服务
@@ -74,20 +102,21 @@ text2sql/
 
 ## 模型选项
 
-| 模型 | Ollama命令 | VRAM需求 | 推荐场景 |
-|------|-----------|---------|---------|
-| SQLCoder-7B | `ollama pull sqlcoder:7b` | ~5GB | 首选，SQL专项优化 |
-| Qwen2.5-Coder-7B | `ollama pull qwen2.5-coder:7b` | ~5GB | 中文支持好 |
-| DeepSeek-Coder-7B | `ollama pull deepseek-coder:7b` | ~5GB | 推理能力强 |
-| CodeLlama-7B | `ollama pull codellama:7b` | ~5GB | 不推荐 |
+| 模型 | Ollama命令 | VRAM需求 | 推荐度 | 说明 |
+|------|-----------|---------|-------|------|
+| **Qwen2.5-Coder-7B** | `ollama pull qwen2.5-coder:7b` | ~5GB | ⭐⭐⭐ | **推荐首选**，跨库稳定，中文好 |
+| DeepSeek-Coder-6.7B | `ollama pull deepseek-coder:6.7b` | ~5GB | ⭐⭐ | 多数据库适应好 |
+| SQLCoder-7B | `ollama pull sqlcoder:7b` | ~5GB | ⭐ | 仅PostgreSQL场景 |
+| Qwen3-Coder-30B | `ollama pull qwen3-coder:30b` | ~19GB | 待测 | 需要更新Ollama |
 
 ## 数据库连接信息
 
-| 数据库 | Host | Port | User | Password |
-|--------|------|------|------|----------|
-| PostgreSQL | localhost | 5432 | text2sql | text2sql123 |
-| MySQL | localhost | 3306 | text2sql | text2sql123 |
-| ClickHouse | localhost | 8123 | text2sql | text2sql123 |
+| 数据库 | Host | Port | User | Password | Database |
+|--------|------|------|------|----------|----------|
+| PostgreSQL | localhost | 5432 | postgres | postgres | benchmark |
+| MySQL | localhost | 3307 | root | rootpassword | benchmark |
+| ClickHouse | localhost | 8123 | default | - | default |
+| MongoDB | localhost | 27017 | - | - | benchmark |
 
 ## 常见问题
 
