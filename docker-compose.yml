@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15
@@ -7,12 +5,12 @@ services:
     environment:
       POSTGRES_USER: text2sql
       POSTGRES_PASSWORD: text2sql123
-      POSTGRES_DB: spider
+      POSTGRES_DB: benchmark
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./data/postgres_init:/docker-entrypoint-initdb.d
+      - ./data/init/postgres:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U text2sql"]
       interval: 10s
@@ -26,12 +24,12 @@ services:
       MYSQL_ROOT_PASSWORD: root123
       MYSQL_USER: text2sql
       MYSQL_PASSWORD: text2sql123
-      MYSQL_DATABASE: spider
+      MYSQL_DATABASE: benchmark
     ports:
-      - "3306:3306"
+      - "3307:3306"  # 改为3307避免端口冲突
     volumes:
       - mysql_data:/var/lib/mysql
-      - ./data/mysql_init:/docker-entrypoint-initdb.d
+      - ./data/init/mysql:/docker-entrypoint-initdb.d
     command: --default-authentication-plugin=mysql_native_password
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
@@ -47,17 +45,31 @@ services:
       CLICKHOUSE_PASSWORD: text2sql123
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     ports:
-      - "8123:8123"   # HTTP interface
-      - "9000:9000"   # Native interface
+      - "8123:8123"
+      - "9000:9000"
     volumes:
       - clickhouse_data:/var/lib/clickhouse
-      - ./data/clickhouse_init:/docker-entrypoint-initdb.d
+      - ./data/init/clickhouse:/docker-entrypoint-initdb.d
     ulimits:
       nofile:
         soft: 262144
         hard: 262144
 
+  mongodb:
+    image: mongo:7
+    container_name: text2sql-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: text2sql
+      MONGO_INITDB_ROOT_PASSWORD: text2sql123
+      MONGO_INITDB_DATABASE: benchmark
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./data/init/mongodb:/docker-entrypoint-initdb.d
+
 volumes:
   postgres_data:
   mysql_data:
   clickhouse_data:
+  mongodb_data:

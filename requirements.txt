@@ -5,13 +5,14 @@ torch>=2.0.0
 transformers>=4.36.0
 accelerate>=0.25.0
 
-# Model serving (optional, choose one)
-# vllm>=0.2.0  # For high-performance serving
+# Model serving (optional)
+# vllm>=0.2.0
 
 # Database connectors
 psycopg2-binary>=2.9.0
 pymysql>=1.1.0
 clickhouse-connect>=0.7.0
+pymongo>=4.6.0
 
 # SQL utilities
 sqlparse>=0.4.0
@@ -20,9 +21,11 @@ sqlparse>=0.4.0
 pandas>=2.0.0
 datasets>=2.14.0
 
+# HTTP client
+requests>=2.31.0
+
 # Utils
 tqdm>=4.65.0
-requests>=2.31.0
 
 # Testing
 pytest>=7.0.0
