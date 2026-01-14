@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  postgres-test:
+    image: postgres:15-alpine
+    container_name: text2sql-test-pg
+    environment:
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpass
+      POSTGRES_DB: test_ecommerce
+    ports:
+      - "5433:5432"  # 使用5433避免冲突
+    volumes:
+      - ./test_scenarios/ecommerce_scenario.sql:/docker-entrypoint-initdb.d/01_init.sql
+      - pgdata-test:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testuser -d test_ecommerce"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata-test:

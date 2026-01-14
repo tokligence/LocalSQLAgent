@@ -1,0 +1,145 @@
+{
+  "test_scenarios": [
+    {
+      "category": "销售分析",
+      "cases": [
+        {
+          "id": "sales_001",
+          "question": "本月销售额最高的前3个产品是什么？",
+          "difficulty": "medium",
+          "expected_logic": "需要JOIN orders和order_items，按产品分组求和，排序取前3",
+          "key_tables": ["orders", "order_items", "products"]
+        },
+        {
+          "id": "sales_002",
+          "question": "哪个城市的客户平均消费最高？",
+          "difficulty": "medium",
+          "expected_logic": "按城市分组，计算平均total_spent",
+          "key_tables": ["customers"]
+        },
+        {
+          "id": "sales_003",
+          "question": "退单率最高的产品类别是什么？",
+          "difficulty": "hard",
+          "expected_logic": "需要计算cancelled订单占比，按类别分组",
+          "key_tables": ["orders", "order_items", "products", "product_categories"]
+        }
+      ]
+    },
+    {
+      "category": "客户分析",
+      "cases": [
+        {
+          "id": "customer_001",
+          "question": "VIP等级为钻石（3）的客户有多少人？他们的总消费是多少？",
+          "difficulty": "easy",
+          "expected_logic": "WHERE条件筛选，COUNT和SUM聚合",
+          "key_tables": ["customers"]
+        },
+        {
+          "id": "customer_002",
+          "question": "哪些客户在购物车里有商品但最近30天没有下单？",
+          "difficulty": "hard",
+          "expected_logic": "购物车LEFT JOIN订单，时间条件过滤",
+          "key_tables": ["shopping_cart", "customers", "orders"]
+        },
+        {
+          "id": "customer_003",
+          "question": "复购率最高的客户是谁？（订单数量最多）",
+          "difficulty": "medium",
+          "expected_logic": "按客户分组计数，排序取第一",
+          "key_tables": ["customers", "orders"]
+        }
+      ]
+    },
+    {
+      "category": "库存管理",
+      "cases": [
+        {
+          "id": "inventory_001",
+          "question": "库存不足10件的产品有哪些？",
+          "difficulty": "easy",
+          "expected_logic": "简单WHERE条件过滤",
+          "key_tables": ["products"]
+        },
+        {
+          "id": "inventory_002",
+          "question": "哪个类别的产品库存价值最高？（库存数量*成本）",
+          "difficulty": "medium",
+          "expected_logic": "计算库存价值，按类别分组求和",
+          "key_tables": ["products", "product_categories"]
+        }
+      ]
+    },
+    {
+      "category": "产品分析",
+      "cases": [
+        {
+          "id": "product_001",
+          "question": "评分最高的5个产品是什么？",
+          "difficulty": "easy",
+          "expected_logic": "ORDER BY rating DESC LIMIT 5",
+          "key_tables": ["products"]
+        },
+        {
+          "id": "product_002",
+          "question": "哪个产品的利润率最高？（(价格-成本)/价格）",
+          "difficulty": "medium",
+          "expected_logic": "计算利润率公式，排序",
+          "key_tables": ["products"]
+        },
+        {
+          "id": "product_003",
+          "question": "有评价但没有验证购买的产品有哪些？",
+          "difficulty": "medium",
+          "expected_logic": "GROUP BY产品，HAVING条件过滤",
+          "key_tables": ["product_reviews", "products"]
+        }
+      ]
+    },
+    {
+      "category": "复杂查询",
+      "cases": [
+        {
+          "id": "complex_001",
+          "question": "找出消费金额在所有客户平均值以上，但最近60天没有购买的VIP客户",
+          "difficulty": "hard",
+          "expected_logic": "子查询计算平均值，时间条件，多重筛选",
+          "key_tables": ["customers", "orders"]
+        },
+        {
+          "id": "complex_002",
+          "question": "计算每个产品类别在不同支付方式下的销售额分布",
+          "difficulty": "hard",
+          "expected_logic": "多表JOIN，双重GROUP BY，透视表逻辑",
+          "key_tables": ["orders", "order_items", "products", "product_categories"]
+        },
+        {
+          "id": "complex_003",
+          "question": "找出同时购买了手机和耳机的客户，以及他们的总消费",
+          "difficulty": "hard",
+          "expected_logic": "自连接或EXISTS子查询，多条件筛选",
+          "key_tables": ["customers", "orders", "order_items", "products"]
+        }
+      ]
+    }
+  ],
+  "evaluation_criteria": {
+    "correctness": {
+      "weight": 0.5,
+      "description": "查询结果是否正确"
+    },
+    "efficiency": {
+      "weight": 0.2,
+      "description": "查询性能和优化程度"
+    },
+    "attempts": {
+      "weight": 0.2,
+      "description": "需要多少次尝试才能成功"
+    },
+    "time": {
+      "weight": 0.1,
+      "description": "总执行时间"
+    }
+  }
+}
