@@ -1,0 +1,107 @@
+[
+  {
+    "success": true,
+    "sql": "SELECT COUNT(*) AS total_users FROM users;",
+    "time": 1.138589859008789,
+    "model": "qwen2.5-coder:7b",
+    "test_name": "简单计数"
+  },
+  {
+    "success": true,
+    "sql": "SELECT u.id, u.name, u.department_id, u.salary",
+    "time": 1.4828639030456543,
+    "model": "qwen2.5-coder:7b",
+    "test_name": "单表查询"
+  },
+  {
+    "success": true,
+    "sql": "SELECT u.id, u.name, u.salary",
+    "time": 1.5991261005401611,
+    "model": "qwen2.5-coder:7b",
+    "test_name": "简单JOIN"
+  },
+  {
+    "success": true,
+    "sql": "SELECT d.name AS department_name, AVG(u.salary) AS average_salary",
+    "time": 1.642287254333496,
+    "model": "qwen2.5-coder:7b",
+    "test_name": "聚合查询"
+  },
+  {
+    "success": true,
+    "sql": "SELECT u.id, u.name, SUM(o.total_amount) AS total_order_amount",
+    "time": 2.7560551166534424,
+    "model": "qwen2.5-coder:7b",
+    "test_name": "复杂查询"
+  },
+  {
+    "success": true,
+    "sql": "SELECT COUNT(*) FROM users;",
+    "time": 12.683136940002441,
+    "model": "qwen3:8b",
+    "test_name": "简单计数"
+  },
+  {
+    "success": true,
+    "sql": "SELECT * FROM users WHERE salary > 50000;",
+    "time": 19.60082721710205,
+    "model": "qwen3:8b",
+    "test_name": "单表查询"
+  },
+  {
+    "success": false,
+    "error": "HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=30)",
+    "time": 30.00586700439453,
+    "model": "qwen3:8b",
+    "test_name": "简单JOIN"
+  },
+  {
+    "success": false,
+    "error": "HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=30)",
+    "time": 30.006918907165527,
+    "model": "qwen3:8b",
+    "test_name": "聚合查询"
+  },
+  {
+    "success": false,
+    "error": "HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=30)",
+    "time": 30.004220008850098,
+    "model": "qwen3:8b",
+    "test_name": "复杂查询"
+  },
+  {
+    "success": true,
+    "sql": "SELECT COUNT(*) FROM users;",
+    "time": 15.264671087265015,
+    "model": "qwen3:4b",
+    "test_name": "简单计数"
+  },
+  {
+    "success": false,
+    "error": "HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=30)",
+    "time": 30.004513025283813,
+    "model": "qwen3:4b",
+    "test_name": "单表查询"
+  },
+  {
+    "success": false,
+    "error": "HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=30)",
+    "time": 30.006203174591064,
+    "model": "qwen3:4b",
+    "test_name": "简单JOIN"
+  },
+  {
+    "success": false,
+    "error": "HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=30)",
+    "time": 30.00479006767273,
+    "model": "qwen3:4b",
+    "test_name": "聚合查询"
+  },
+  {
+    "success": false,
+    "error": "HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=30)",
+    "time": 30.00476598739624,
+    "model": "qwen3:4b",
+    "test_name": "复杂查询"
+  }
+]

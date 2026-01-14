@@ -1,0 +1,98 @@
+[
+  {
+    "test_id": 1,
+    "question": "统计总共有多少个客户",
+    "difficulty": "easy",
+    "direct": {
+      "success": true,
+      "sql": "SELECT COUNT(*) AS total_customers FROM customers;",
+      "row_count": 1,
+      "time": 0.7080068588256836,
+      "attempts": 1
+    },
+    "exploratory": {
+      "success": false,
+      "error": "Object of type date is not JSON serializable"
+    }
+  },
+  {
+    "test_id": 2,
+    "question": "找出VIP等级为3（钻石会员）的所有客户",
+    "difficulty": "easy",
+    "direct": {
+      "success": true,
+      "sql": "SELECT * FROM customers WHERE vip_level = 3;",
+      "row_count": 2,
+      "time": 0.6337289810180664,
+      "attempts": 1
+    },
+    "exploratory": {
+      "success": false,
+      "error": "Object of type date is not JSON serializable"
+    }
+  },
+  {
+    "test_id": 3,
+    "question": "哪个城市的客户平均消费金额最高？",
+    "difficulty": "medium",
+    "direct": {
+      "success": true,
+      "sql": "SELECT c.city, AVG(o.total_amount) AS average_spending FROM customers c JOIN orders o ON c.id = o.customer_id GROUP BY c.city ORDER BY average_spending DESC LIMIT 1;",
+      "row_count": 1,
+      "time": 1.6141362190246582,
+      "attempts": 1
+    },
+    "exploratory": {
+      "success": false,
+      "error": "Object of type date is not JSON serializable"
+    }
+  },
+  {
+    "test_id": 4,
+    "question": "找出订单金额最大的前3个客户的姓名和总消费",
+    "difficulty": "medium",
+    "direct": {
+      "success": true,
+      "sql": "SELECT c.name, SUM(o.total_amount) AS total_spent FROM customers c JOIN orders o ON c.id = o.customer_id GROUP BY c.id, c.name ORDER BY total_spent DESC LIMIT 3;",
+      "row_count": 3,
+      "time": 1.7176408767700195,
+      "attempts": 1
+    },
+    "exploratory": {
+      "success": false,
+      "error": "Object of type date is not JSON serializable"
+    }
+  },
+  {
+    "test_id": 5,
+    "question": "统计每个产品类别的销售数量和销售总额",
+    "difficulty": "hard",
+    "direct": {
+      "success": true,
+      "sql": "SELECT pc.name AS category_name, SUM(oi.quantity) AS total_quantity_sold, SUM(oi.quantity * oi.unit_price) AS total_sales_amount FROM product_categories pc JOIN products p ON pc.id = p.category_id JOIN order_items oi ON p.id = oi.product_id GROUP BY pc.name;",
+      "row_count": 7,
+      "time": 2.3727951049804688,
+      "attempts": 1
+    },
+    "exploratory": {
+      "success": false,
+      "error": "Object of type date is not JSON serializable"
+    }
+  },
+  {
+    "test_id": 6,
+    "question": "找出评价数量最多但平均评分低于4的产品",
+    "difficulty": "hard",
+    "direct": {
+      "success": true,
+      "sql": "SELECT p.id, p.name FROM products p JOIN ( SELECT product_id, COUNT(*) AS review_count, AVG(rating) AS avg_rating FROM product_reviews GROUP BY product_id ) pr ON p.id = pr.product_id WHERE pr.review_count = ( SELECT MAX(review_count) FROM ( SELECT COUNT(*) AS review_count FROM product_reviews GROUP BY product_id ) subquery ) AND pr.avg_rating < 4;",
+      "row_count": 0,
+      "time": 2.909548044204712,
+      "attempts": 1
+    },
+    "exploratory": {
+      "success": false,
+      "error": "Object of type date is not JSON serializable"
+    }
+  }
+]
