@@ -1,0 +1,122 @@
+[
+  {
+    "db_id": "test_db",
+    "question": "查询所有用户的名字和邮箱",
+    "query": "SELECT name, email FROM users;",
+    "schema": "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT, age INTEGER, created_at TIMESTAMP);"
+  },
+  {
+    "db_id": "test_db",
+    "question": "找出年龄大于30岁的用户数量",
+    "query": "SELECT COUNT(*) FROM users WHERE age > 30;",
+    "schema": "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT, age INTEGER, created_at TIMESTAMP);"
+  },
+  {
+    "db_id": "test_db",
+    "question": "统计每个部门的员工数量，按数量降序排列",
+    "query": "SELECT department_id, COUNT(*) as cnt FROM employees GROUP BY department_id ORDER BY cnt DESC;",
+    "schema": "CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, department_id INTEGER, salary DECIMAL); CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT);"
+  },
+  {
+    "db_id": "test_db",
+    "question": "找出薪资最高的前5名员工",
+    "query": "SELECT name, salary FROM employees ORDER BY salary DESC LIMIT 5;",
+    "schema": "CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, department_id INTEGER, salary DECIMAL);"
+  },
+  {
+    "db_id": "test_db",
+    "question": "计算所有订单的总金额",
+    "query": "SELECT SUM(amount) FROM orders;",
+    "schema": "CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, amount DECIMAL, status TEXT, created_at TIMESTAMP);"
+  },
+  {
+    "db_id": "test_db",
+    "question": "查询每个用户的订单总数和总金额",
+    "query": "SELECT user_id, COUNT(*) as order_count, SUM(amount) as total_amount FROM orders GROUP BY user_id;",
+    "schema": "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT); CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, amount DECIMAL, created_at TIMESTAMP);"
+  },
+  {
+    "db_id": "test_db",
+    "question": "找出没有下过订单的用户",
+    "query": "SELECT u.* FROM users u LEFT JOIN orders o ON u.id = o.user_id WHERE o.id IS NULL;",
+    "schema": "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT); CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, amount DECIMAL);"
+  },
+  {
+    "db_id": "test_db",
+    "question": "查询2024年1月的所有订单",
+    "query": "SELECT * FROM orders WHERE created_at >= '2024-01-01' AND created_at < '2024-02-01';",
+    "schema": "CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, amount DECIMAL, created_at TIMESTAMP);"
+  },
+  {
+    "db_id": "test_db",
+    "question": "找出每个产品类别的平均价格",
+    "query": "SELECT category, AVG(price) as avg_price FROM products GROUP BY category;",
+    "schema": "CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, category TEXT, price DECIMAL, stock INTEGER);"
+  },
+  {
+    "db_id": "test_db",
+    "question": "查询库存少于10的产品名称和类别",
+    "query": "SELECT name, category FROM products WHERE stock < 10;",
+    "schema": "CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, category TEXT, price DECIMAL, stock INTEGER);"
+  },
+  {
+    "db_id": "test_db",
+    "question": "Find all customers who have placed more than 3 orders",
+    "query": "SELECT user_id, COUNT(*) as order_count FROM orders GROUP BY user_id HAVING COUNT(*) > 3;",
+    "schema": "CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, amount DECIMAL, status TEXT);"
+  },
+  {
+    "db_id": "test_db",
+    "question": "Get the top 3 categories by total sales",
+    "query": "SELECT p.category, SUM(o.quantity * p.price) as total_sales FROM order_items o JOIN products p ON o.product_id = p.id GROUP BY p.category ORDER BY total_sales DESC LIMIT 3;",
+    "schema": "CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, category TEXT, price DECIMAL); CREATE TABLE order_items (id INTEGER PRIMARY KEY, order_id INTEGER, product_id INTEGER, quantity INTEGER);"
+  },
+  {
+    "db_id": "test_db",
+    "question": "List all employees with their department names",
+    "query": "SELECT e.name as employee_name, d.name as department_name FROM employees e JOIN departments d ON e.department_id = d.id;",
+    "schema": "CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, department_id INTEGER); CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT);"
+  },
+  {
+    "db_id": "test_db",
+    "question": "Find the average order value per month",
+    "query": "SELECT strftime('%Y-%m', created_at) as month, AVG(amount) as avg_order_value FROM orders GROUP BY month;",
+    "schema": "CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, amount DECIMAL, created_at TIMESTAMP);"
+  },
+  {
+    "db_id": "test_db",
+    "question": "Get users who registered in the last 7 days",
+    "query": "SELECT * FROM users WHERE created_at > datetime('now', '-7 days');",
+    "schema": "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT, created_at TIMESTAMP);"
+  },
+  {
+    "db_id": "test_db",
+    "question": "Calculate the percentage of completed orders",
+    "query": "SELECT (COUNT(CASE WHEN status = 'completed' THEN 1 END) * 100.0 / COUNT(*)) as completion_rate FROM orders;",
+    "schema": "CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, amount DECIMAL, status TEXT);"
+  },
+  {
+    "db_id": "test_db",
+    "question": "Find products that have never been ordered",
+    "query": "SELECT p.* FROM products p LEFT JOIN order_items oi ON p.id = oi.product_id WHERE oi.id IS NULL;",
+    "schema": "CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price DECIMAL); CREATE TABLE order_items (id INTEGER PRIMARY KEY, product_id INTEGER, quantity INTEGER);"
+  },
+  {
+    "db_id": "test_db",
+    "question": "Get the second highest salary",
+    "query": "SELECT MAX(salary) FROM employees WHERE salary < (SELECT MAX(salary) FROM employees);",
+    "schema": "CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, salary DECIMAL);"
+  },
+  {
+    "db_id": "test_db",
+    "question": "Count the number of users in each age group (0-18, 19-35, 36-50, 51+)",
+    "query": "SELECT CASE WHEN age <= 18 THEN '0-18' WHEN age <= 35 THEN '19-35' WHEN age <= 50 THEN '36-50' ELSE '51+' END as age_group, COUNT(*) as count FROM users GROUP BY age_group;",
+    "schema": "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER);"
+  },
+  {
+    "db_id": "test_db",
+    "question": "Find duplicate email addresses",
+    "query": "SELECT email, COUNT(*) as count FROM users GROUP BY email HAVING COUNT(*) > 1;",
+    "schema": "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT);"
+  }
+]

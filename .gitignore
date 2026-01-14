@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Data files (too large for git)
+data/spider/
+data/bird/
+*.sqlite
+*.zip
+
+# Model files
+models/
+*.bin
+*.safetensors
+*.gguf
+
+# Results (generated)
+results/*.json
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
