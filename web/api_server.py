@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-OpenAI-compatible API Server for LocalSQLAgent
+OpenAI-compatible API Server for Tokligence LocalSQLAgent
 Provides a standard chat completion API interface
 """
 
@@ -360,7 +360,7 @@ def health_check():
     """Health check endpoint"""
     return jsonify({
         "status": "healthy",
-        "service": "LocalSQLAgent API",
+        "service": "Tokligence LocalSQLAgent API",
         "version": "1.0.0",
         "models_available": list(MODEL_MAPPING.keys())
     })
@@ -370,7 +370,7 @@ def health_check():
 def home():
     """Home endpoint with API documentation"""
     return jsonify({
-        "service": "LocalSQLAgent API Server",
+        "service": "Tokligence LocalSQLAgent API Server",
         "version": "1.0.0",
         "documentation": {
             "openai_compatible": True,
@@ -417,8 +417,9 @@ if __name__ == '__main__':
 
     print(f"""
     ╔══════════════════════════════════════════════════════════════╗
-    ║          LocalSQLAgent OpenAI-Compatible API Server          ║
-    ║                  by Tokligence Organization                  ║
+    ║        Tokligence LocalSQLAgent API Server                    ║
+    ║            OpenAI-Compatible Interface                        ║
+    ║                  by Tokligence Organization                   ║
     ╚══════════════════════════════════════════════════════════════╝
 
     🚀 Server starting at http://{args.host}:{args.port}

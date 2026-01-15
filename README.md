@@ -1,10 +1,11 @@
-# 🚀 LocalSQLAgent - Local Text-to-SQL Agent System
+# 🚀 Tokligence LocalSQLAgent - Local Text-to-SQL Agent System
 
 [![100% Local](https://img.shields.io/badge/Deployment-100%25_Local-success)](https://github.com/tokligence/LocalSQLAgent)
 [![Zero API Cost](https://img.shields.io/badge/API_Cost-$0-green)](https://github.com/tokligence/LocalSQLAgent)
 [![Model Size](https://img.shields.io/badge/Model-7B-blue)](https://github.com/tokligence/LocalSQLAgent)
 [![Powered by Ollama](https://img.shields.io/badge/Powered_by-Ollama-orange)](https://ollama.com)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![By Tokligence](https://img.shields.io/badge/By-Tokligence-4CAF50)](https://github.com/tokligence)
 
 > 🎯 **From 46% to 95%+ SQL accuracy with intelligent retry strategy** - 5 attempts achieve near-perfect accuracy, zero API costs!
 >
@@ -27,15 +28,16 @@ English | [中文文档](README_CN.md)
                     └──────────────────┘      └──────────────────┘
 ```
 
-### ✅ LocalSQLAgent Solution (Free, Private, Efficient)
+### ✅ Tokligence LocalSQLAgent Solution (Free, Private, Efficient)
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │                        🏠 100% Local Environment                      │
 │                                                                      │
 │  ┌────────────┐     ┌─────────────────┐     ┌──────────────────┐   │
-│  │ User Input  │────▶│  LocalSQLAgent  │────▶│  Ollama Models   │   │
-│  │  "Query..." │     │  Intelligent    │     │ Qwen2.5-Coder:7B │   │
-│  └────────────┘     │     Agent       │     └──────────────────┘   │
+│  │ User Input  │────▶│   Tokligence    │────▶│  Ollama Models   │   │
+│  │  "Query..." │     │ LocalSQLAgent   │     │ Qwen2.5-Coder:7B │   │
+│  └────────────┘     │  Intelligent    │     └──────────────────┘   │
+│                      │     Agent       │                            │
 │                      └─────────────────┘                            │
 │                              │                                       │
 │                              ▼                                       │

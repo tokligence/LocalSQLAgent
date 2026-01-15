@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-LocalSQLAgent Web UI
+Tokligence Tokligence LocalSQLAgent Web UI
 Professional web interface for Text-to-SQL queries
 """
 
@@ -24,7 +24,7 @@ from src.core.ambiguity_detection import AmbiguityDetector
 
 # Page configuration
 st.set_page_config(
-    page_title="LocalSQLAgent - Text to SQL",
+    page_title="Tokligence Tokligence LocalSQLAgent - Text to SQL",
     page_icon="🚀",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -176,7 +176,7 @@ def test_db_connection(db_type: str, config: Dict) -> tuple[bool, str]:
 def render_sidebar():
     """Render sidebar with navigation and settings"""
     with st.sidebar:
-        st.image("https://via.placeholder.com/300x100/4CAF50/FFFFFF?text=LocalSQLAgent", width=300)
+        st.image("https://via.placeholder.com/300x100/4CAF50/FFFFFF?text=Tokligence", width=300)
         st.markdown("---")
 
         # Navigation
@@ -238,7 +238,8 @@ def render_sidebar():
 
 def render_query_interface():
     """Render the main query interface"""
-    st.title("🎯 Text-to-SQL Query Interface")
+    st.title("🎯 Tokligence Tokligence LocalSQLAgent")
+    st.markdown("### Intelligent Text-to-SQL Query Interface")
     st.markdown("Convert natural language to SQL queries with intelligent multi-attempt strategy")
 
     # Check if any database is configured
@@ -585,13 +586,13 @@ def render_query_history():
 def render_documentation():
     """Render documentation page"""
     st.title("📚 Documentation")
-    st.markdown("Learn how to use LocalSQLAgent effectively")
+    st.markdown("Learn how to use Tokligence LocalSQLAgent effectively")
 
     tab1, tab2, tab3, tab4 = st.tabs(["🚀 Getting Started", "💡 Features", "🌐 Bilingual Support", "🔧 API Reference"])
 
     with tab1:
         st.markdown("""
-        ## Getting Started with LocalSQLAgent
+        ## Getting Started with Tokligence LocalSQLAgent
 
         ### 1. Configure Your Database
         - Navigate to **Database Settings**
@@ -605,7 +606,7 @@ def render_documentation():
         - The system will detect ambiguities automatically
 
         ### 3. Understanding Multi-Attempt Strategy
-        LocalSQLAgent uses an intelligent retry mechanism:
+        Tokligence LocalSQLAgent uses an intelligent retry mechanism:
         - **Attempt 1**: Basic query generation (46% success)
         - **Attempt 2-3**: Learning from errors (95% success)
         - **Attempt 4-5**: Fine-tuning for perfection (100% success)
@@ -646,7 +647,7 @@ def render_documentation():
         st.markdown("""
         ## 🌐 Bilingual Support
 
-        LocalSQLAgent provides excellent support for both English and Chinese:
+        Tokligence LocalSQLAgent provides excellent support for both English and Chinese:
 
         ### Supported Query Types
 

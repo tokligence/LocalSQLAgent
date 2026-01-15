@@ -1,4 +1,4 @@
-# LocalSQLAgent Makefile
+# Tokligence LocalSQLAgent Makefile
 # Simplifies setup and testing for users
 
 .PHONY: help install setup-ollama setup-db start stop test clean quick-start benchmark
@@ -6,7 +6,8 @@
 # Default target
 help:
 	@echo "╔══════════════════════════════════════════════════════════════╗"
-	@echo "║          LocalSQLAgent - Local Text-to-SQL Agent              ║"
+	@echo "║            Tokligence LocalSQLAgent                           ║"
+	@echo "║          Local Text-to-SQL Intelligent Agent                  ║"
 	@echo "║                  by Tokligence Organization                   ║"
 	@echo "║            https://github.com/tokligence/LocalSQLAgent        ║"
 	@echo "╚══════════════════════════════════════════════════════════════╝"
@@ -79,7 +80,7 @@ setup-db:
 
 # Start everything
 start: setup-ollama setup-db
-	@echo "🚀 LocalSQLAgent is ready!"
+	@echo "🚀 Tokligence LocalSQLAgent is ready!"
 	@echo ""
 	@echo "Databases running at:"
 	@echo "  PostgreSQL: localhost:5432"
@@ -90,7 +91,7 @@ start: setup-ollama setup-db
 	@echo "Run 'make quick-start' to try it out!"
 	@echo ""
 	@echo "───────────────────────────────────────────────────────────────"
-	@echo "   LocalSQLAgent by Tokligence | github.com/tokligence"
+	@echo "   Tokligence LocalSQLAgent | github.com/tokligence"
 	@echo "───────────────────────────────────────────────────────────────"
 
 # Stop all services
