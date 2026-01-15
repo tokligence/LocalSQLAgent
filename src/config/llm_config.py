@@ -39,25 +39,45 @@ class LLMConfig:
 
     def load_config(self) -> Dict[str, Any]:
         """Load configuration from file or create default"""
+        config = None
+
         if self.CONFIG_FILE.exists():
             try:
                 with open(self.CONFIG_FILE, 'r') as f:
-                    return json.load(f)
+                    config = json.load(f)
             except Exception as e:
                 logger.warning(f"Failed to load config: {e}")
 
-        # Default configuration
-        return {
-            "provider": "ollama",
-            "ollama": {
-                "base_url": "http://localhost:11434",
-                "model": "qwen2.5-coder:7b"
-            },
-            "openai": {
-                "api_key": os.getenv("OPENAI_API_KEY", ""),
-                "model": "gpt-3.5-turbo"
+        if not config:
+            # Default configuration
+            config = {
+                "provider": "ollama",
+                "ollama": {
+                    "base_url": "http://localhost:11434",
+                    "model": "qwen2.5-coder:7b"
+                },
+                "openai": {
+                    "api_key": os.getenv("OPENAI_API_KEY", ""),
+                    "model": "gpt-3.5-turbo"
+                }
             }
-        }
+
+        # Environment overrides (useful for containers)
+        env_provider = os.getenv("LLM_PROVIDER")
+        env_ollama_base = os.getenv("OLLAMA_BASE_URL")
+        env_ollama_model = os.getenv("OLLAMA_MODEL")
+        env_openai_model = os.getenv("OPENAI_MODEL")
+
+        if env_provider:
+            config["provider"] = env_provider
+        if env_ollama_base:
+            config["ollama"]["base_url"] = env_ollama_base
+        if env_ollama_model:
+            config["ollama"]["model"] = env_ollama_model
+        if env_openai_model:
+            config["openai"]["model"] = env_openai_model
+
+        return config
 
     def save_config(self, config: Dict[str, Any]) -> bool:
         """Save configuration to file"""
