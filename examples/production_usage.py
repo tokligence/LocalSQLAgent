@@ -8,9 +8,9 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.intelligent_agent import IntelligentSQLAgent, ExecutionStrategy
-from src.schema_discovery import SchemaSourceType
-from src.ambiguity_detection import AmbiguityDetector
+from src.core.intelligent_agent import IntelligentSQLAgent, ExecutionStrategy
+from src.core.schema_discovery import SchemaSourceType
+from src.core.ambiguity_detection import AmbiguityDetector
 
 
 def example_basic_usage():

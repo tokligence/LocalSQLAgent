@@ -13,8 +13,8 @@ from typing import Dict, Any
 # Add src to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from src.intelligent_agent import IntelligentSQLAgent, ExecutionStrategy
-from src.schema_discovery import MCPSchemaProvider, DatabaseIntrospectionProvider
+from src.core.intelligent_agent import IntelligentSQLAgent, ExecutionStrategy
+from src.core.schema_discovery import MCPSchemaProvider, DatabaseIntrospectionProvider
 
 
 def test_mcp_connection():

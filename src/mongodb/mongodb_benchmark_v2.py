@@ -14,7 +14,7 @@ from pathlib import Path
 from datetime import datetime
 import pymongo
 from pymongo import MongoClient
-from mongodb_schema_discovery import MongoSchemaDiscovery
+from .mongodb_schema_discovery import MongoSchemaDiscovery
 
 
 @dataclass
