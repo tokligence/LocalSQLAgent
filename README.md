@@ -52,16 +52,36 @@ English | [中文文档](README_CN.md)
 
 ## 📊 Performance Results
 
-### 🚀 Multi-Attempt Strategy Impact (Simulation)
-*Results are from `tests/test_multi_attempt_effectiveness.py`, which simulates success probabilities on 8 synthetic queries. They are not measured on a real LLM or real database and are not guaranteed in production.*
-| Max Attempts | Overall Accuracy | Easy Queries | Medium | Hard | Complex |
-|--------------|-----------------|--------------|--------|------|---------|
-| 1 (baseline) | 46.1% | 88.5% | 60.0% | 27.0% | 9.0% |
-| 3 attempts | 95.2% | 100% | 100% | 98.5% | 82.5% |
-| **5 attempts** ✅ | **100%** | **100%** | **100%** | **100%** | **100%** |
-| 7 attempts | 100% | 100% | 100% | 100% | 100% |
+### 🚀 Multi-Attempt Strategy Impact (Real Benchmark)
+Dataset: Spider dev (first 100 samples). Model: `qwen2.5-coder:7b` (Ollama). Stop-on-success enabled. Temperature: 0.0 (1 attempt), 0.2 (5/7 attempts).
 
-**Key Finding**: In simulation, multi-attempt improves accuracy from 46%→95%+. Real-world results vary by model, schema, and data.
+**Host (venv)**
+| Max Attempts | Exec Accuracy | Exact Match | Avg Latency | Avg Attempts |
+|--------------|---------------|-------------|-------------|--------------|
+| 1 | 84% | 3% | 2.43s | 1.00 |
+| 5 | 85% | 4% | 3.97s | 1.66 |
+| 7 | 85% | 4% | 4.79s | 1.94 |
+
+**Docker (text2sql2026-api image)**
+| Max Attempts | Exec Accuracy | Exact Match | Avg Latency | Avg Attempts |
+|--------------|---------------|-------------|-------------|--------------|
+| 1 | 84% | 3% | 2.56s | 1.00 |
+| 5 | 84% | 2% | 4.22s | 1.66 |
+| 7 | 84% | 3% | 4.77s | 1.96 |
+
+**Key Finding**: On this subset, extra attempts improve execution accuracy marginally (84% → 85%) and increase latency.
+
+**BIRD dev**: The official `dev.zip` download from `bird-bench.oss-cn-beijing.aliyuncs.com` failed from this environment, and the Hugging Face mini-dev lacks SQLite DBs/schema, so BIRD execution accuracy was not run yet. Provide the full BIRD dev dataset under `data/bird` to enable `--benchmark bird`.
+
+Reproduce (Spider dev subset):
+```bash
+python benchmarks/sql_benchmark.py --model ollama --model-name qwen2.5-coder:7b \
+  --benchmark spider --limit 100 --max-attempts 5 --temperature 0.2
+```
+
+### ✅ Integration Test Results (Live Services)
+- `pytest tests/integration/test_schema_discovery_mysql_clickhouse.py tests/integration/test_multi_statement_execution.py -q` → 4 passed
+- Multi-schema check (PostgreSQL): created `analytics.events` but schema discovery returned only `public` tables (multi-schema discovery not supported yet)
 
 ### SQL Database Performance (Single Attempt Baseline)
 | Model | PostgreSQL | MySQL | ClickHouse | Average |
@@ -88,17 +108,17 @@ English | [中文文档](README_CN.md)
 
 *Costs vary significantly based on usage volume and model selection
 
-### Performance Metrics (Simulation)
+### Performance Metrics (Measured, Spider dev subset)
 ```
 Hardware: Regular laptop (8GB RAM)
 Model Size: 7B parameters (4GB disk space)
 Response Time: 1-3 seconds per attempt
 
-Accuracy Improvement with Multi-Attempt Strategy (simulation):
-• Single Attempt: 46-75% (varies by query complexity)
-• 3 Attempts: 95%+ accuracy
-• 5 Attempts: Can approach 100% in simulation (not guaranteed)
-• Time Trade-off: 5-15 seconds total for complex queries
+Accuracy (Spider dev first 100 samples):
+• 1 Attempt: 84% execution accuracy
+• 5 Attempts: 85% execution accuracy
+• 7 Attempts: 85% execution accuracy
+• Time Trade-off: ~2.4s → ~4.8s average latency
 
 Concurrent Support: 10+ QPS
 ```
@@ -106,7 +126,7 @@ Concurrent Support: 10+ QPS
 ## ✨ Why LocalSQLAgent?
 
 ### 🎯 Real Results that Matter
-- **Multi-Attempt Lift**: 46% → 95%+ in simulation (run benchmarks for your data)
+- **Multi-Attempt Lift**: 84% → 85% on Spider dev subset (first 100)
 - **Zero API Costs**: No recurring fees (vs potentially hundreds/month for cloud APIs)
 - **100% Privacy**: Your data never leaves your machine
 - **Bilingual Native**: Full support for English and Chinese queries

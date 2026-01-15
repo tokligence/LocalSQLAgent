@@ -11,7 +11,7 @@ import sys
 import sqlite3
 import time
 from pathlib import Path
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, List, Tuple, Any
 from dataclasses import dataclass
 from tqdm import tqdm
 import argparse
@@ -28,6 +28,7 @@ class BenchmarkResult:
     predicted_sql: str
     execution_match: bool
     exact_match: bool
+    attempts: int = 1
     error: Optional[str] = None
     latency: float = 0.0
 
@@ -35,21 +36,34 @@ class BenchmarkResult:
 class Text2SQLModel:
     """LLM 模型接口基类"""
 
-    def generate_sql(self, question: str, schema: str, dialect: str = "sqlite") -> str:
+    def generate_sql(
+        self,
+        question: str,
+        schema: str,
+        dialect: str = "sqlite",
+        temperature: Optional[float] = None
+    ) -> str:
         raise NotImplementedError
 
 
 class OllamaModel(Text2SQLModel):
     """Ollama 模型接口"""
 
-    def __init__(self, model_name: str = "sqlcoder:7b", base_url: str = "http://localhost:11434"):
+    def __init__(self, model_name: str = "sqlcoder:7b", base_url: Optional[str] = None):
         self.model_name = model_name
-        self.base_url = base_url
+        self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
-    def generate_sql(self, question: str, schema: str, dialect: str = "sqlite") -> str:
+    def generate_sql(
+        self,
+        question: str,
+        schema: str,
+        dialect: str = "sqlite",
+        temperature: Optional[float] = None
+    ) -> str:
         import requests
 
         prompt = self._build_prompt(question, schema, dialect)
+        temp_value = 0.0 if temperature is None else float(temperature)
 
         response = requests.post(
             f"{self.base_url}/api/generate",
@@ -58,7 +72,7 @@ class OllamaModel(Text2SQLModel):
                 "prompt": prompt,
                 "stream": False,
                 "options": {
-                    "temperature": 0.0,
+                    "temperature": temp_value,
                     "num_predict": 512,
                 }
             },
@@ -122,7 +136,13 @@ class VLLMModel(Text2SQLModel):
             stop=["```", "\n\n\n"]
         )
 
-    def generate_sql(self, question: str, schema: str, dialect: str = "sqlite") -> str:
+    def generate_sql(
+        self,
+        question: str,
+        schema: str,
+        dialect: str = "sqlite",
+        temperature: Optional[float] = None
+    ) -> str:
         prompt = self._build_prompt(question, schema, dialect)
         outputs = self.llm.generate([prompt], self.sampling_params)
         return self._extract_sql(outputs[0].outputs[0].text)
@@ -171,7 +191,13 @@ class TransformersModel(Text2SQLModel):
         )
         self.model.eval()
 
-    def generate_sql(self, question: str, schema: str, dialect: str = "sqlite") -> str:
+    def generate_sql(
+        self,
+        question: str,
+        schema: str,
+        dialect: str = "sqlite",
+        temperature: Optional[float] = None
+    ) -> str:
         import torch
 
         prompt = self._build_prompt(question, schema, dialect)
@@ -301,13 +327,21 @@ class SpiderBenchmark:
         except Exception as e:
             return False, str(e)
 
-    def run(self, model: Text2SQLModel, limit: int = None) -> List[BenchmarkResult]:
+    def run(
+        self,
+        model: Text2SQLModel,
+        limit: int = None,
+        max_attempts: int = 1,
+        temperature: float = 0.0,
+        stop_on_success: bool = True
+    ) -> List[BenchmarkResult]:
         """运行评测"""
         results = []
 
         data = self.dev_data[:limit] if limit else self.dev_data
 
         print(f"\nRunning Spider benchmark on {len(data)} samples...")
+        print(f"Max attempts: {max_attempts} | Temperature: {temperature} | Stop on success: {stop_on_success}")
 
         for item in tqdm(data):
             question = item['question']
@@ -316,33 +350,59 @@ class SpiderBenchmark:
 
             schema = self.get_schema(db_id)
 
-            start_time = time.time()
-            try:
-                predicted_sql = model.generate_sql(question, schema)
-            except Exception as e:
-                predicted_sql = ""
-                error = str(e)
-            else:
-                error = None
-            latency = time.time() - start_time
-
-            # 执行匹配检查
+            predicted_sql = ""
+            error = None
             exec_match = False
-            if predicted_sql and not error:
-                gold_success, gold_result = self.execute_sql(db_id, gold_sql)
-                pred_success, pred_result = self.execute_sql(db_id, predicted_sql)
+            exact_match = False
+            total_latency = 0.0
+            attempts_used = 0
 
-                if gold_success and pred_success:
-                    # 比较结果集（忽略顺序）
-                    try:
-                        exec_match = set(map(tuple, gold_result)) == set(map(tuple, pred_result))
-                    except:
-                        exec_match = gold_result == pred_result
-                elif not pred_success:
-                    error = f"Execution error: {pred_result}"
+            gold_success, gold_result = self.execute_sql(db_id, gold_sql)
+            if not gold_success:
+                results.append(BenchmarkResult(
+                    question=question,
+                    gold_sql=gold_sql,
+                    predicted_sql="",
+                    execution_match=False,
+                    exact_match=False,
+                    attempts=0,
+                    error=f"Gold execution failed: {gold_result}",
+                    latency=0.0
+                ))
+                continue
 
-            # 精确匹配检查（简化版，实际应该用SQL解析器）
-            exact_match = self._normalize_sql(predicted_sql) == self._normalize_sql(gold_sql)
+            for attempt in range(max_attempts):
+                attempts_used = attempt + 1
+                start_time = time.time()
+                try:
+                    predicted_sql = model.generate_sql(question, schema, temperature=temperature)
+                    error = None
+                except Exception as e:
+                    predicted_sql = ""
+                    error = str(e)
+                latency = time.time() - start_time
+                total_latency += latency
+
+                # 执行匹配检查
+                exec_match = False
+                exact_match = False
+                if predicted_sql and not error:
+                    pred_success, pred_result = self.execute_sql(db_id, predicted_sql)
+
+                    if pred_success:
+                        # 比较结果集（忽略顺序）
+                        try:
+                            exec_match = set(map(tuple, gold_result)) == set(map(tuple, pred_result))
+                        except Exception:
+                            exec_match = gold_result == pred_result
+                    else:
+                        error = f"Execution error: {pred_result}"
+
+                    # 精确匹配检查（简化版，实际应该用SQL解析器）
+                    exact_match = self._normalize_sql(predicted_sql) == self._normalize_sql(gold_sql)
+
+                if stop_on_success and exec_match:
+                    break
 
             results.append(BenchmarkResult(
                 question=question,
@@ -350,8 +410,9 @@ class SpiderBenchmark:
                 predicted_sql=predicted_sql,
                 execution_match=exec_match,
                 exact_match=exact_match,
+                attempts=attempts_used,
                 error=error,
-                latency=latency
+                latency=total_latency
             ))
 
         return results
@@ -365,6 +426,221 @@ class SpiderBenchmark:
         return sql
 
 
+class BIRDBenchmark:
+    """BIRD dev benchmark (SQLite-based)"""
+
+    def __init__(self, data_dir: str):
+        self.data_dir = Path(data_dir)
+        self.dev_data = self._load_dev_data()
+
+    def _load_json(self, path: Path) -> List[Dict[str, Any]]:
+        raw = path.read_text(encoding="utf-8").strip()
+        if not raw:
+            return []
+        if raw.startswith("["):
+            return json.loads(raw)
+        return [json.loads(line) for line in raw.splitlines() if line.strip()]
+
+    def _load_dev_data(self) -> List[Dict[str, Any]]:
+        candidates = [
+            self.data_dir / "bird" / "dev" / "dev.json",
+            self.data_dir / "bird" / "dev.json",
+            self.data_dir / "bird" / "dev" / "dev.jsonl",
+            self.data_dir / "bird" / "dev.jsonl",
+        ]
+        for path in candidates:
+            if path.exists():
+                return self._load_json(path)
+        raise FileNotFoundError("BIRD dev.json not found under data/bird")
+
+    def _get_db_path(self, db_id: str) -> Optional[str]:
+        candidates = [
+            self.data_dir / "bird" / "dev" / "dev_databases" / db_id / f"{db_id}.sqlite",
+            self.data_dir / "bird" / "dev_databases" / db_id / f"{db_id}.sqlite",
+            self.data_dir / "bird" / "database" / db_id / f"{db_id}.sqlite",
+            self.data_dir / "bird" / "dev" / "database" / db_id / f"{db_id}.sqlite",
+        ]
+        for path in candidates:
+            if path.exists():
+                return str(path)
+        return None
+
+    def _get_schema(self, db_path: str) -> str:
+        """Build CREATE TABLE schema from SQLite introspection."""
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT name
+            FROM sqlite_master
+            WHERE type='table' AND name NOT LIKE 'sqlite_%'
+        """)
+        table_names = [row[0] for row in cursor.fetchall()]
+
+        schema_parts = []
+        for table_name in table_names:
+            cursor.execute(f"PRAGMA table_info('{table_name}')")
+            columns = []
+            pk_cols = set()
+            for col in cursor.fetchall():
+                col_name = col[1]
+                col_type = col[2] or "TEXT"
+                if col[5] == 1:
+                    pk_cols.add(col_name)
+                columns.append((col_name, col_type))
+
+            col_lines = []
+            for col_name, col_type in columns:
+                pk_marker = " PRIMARY KEY" if col_name in pk_cols else ""
+                col_lines.append(f"  {col_name} {col_type}{pk_marker}")
+
+            schema_parts.append(f"CREATE TABLE {table_name} (\n" + ",\n".join(col_lines) + "\n);")
+
+            cursor.execute(f"PRAGMA foreign_key_list('{table_name}')")
+            fk_rows = cursor.fetchall()
+            for fk in fk_rows:
+                from_col = fk[3]
+                ref_table = fk[2]
+                ref_col = fk[4]
+                schema_parts.append(f"-- Foreign Key: {from_col} references {ref_table}.{ref_col}")
+
+        conn.close()
+        return "\n\n".join(schema_parts)
+
+    def _field(self, item: Dict[str, Any], keys: List[str]) -> Optional[Any]:
+        for key in keys:
+            if key in item:
+                return item[key]
+        return None
+
+    def execute_sql(self, db_path: str, sql: str) -> Tuple[bool, Any]:
+        try:
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            result = cursor.fetchall()
+            conn.close()
+            return True, result
+        except Exception as e:
+            return False, str(e)
+
+    def _normalize_sql(self, sql: str) -> str:
+        import re
+        sql = sql.lower().strip()
+        sql = re.sub(r'\s+', ' ', sql)
+        sql = re.sub(r'\s*([,\(\)])\s*', r'\1', sql)
+        return sql
+
+    def run(
+        self,
+        model: Text2SQLModel,
+        limit: int = None,
+        max_attempts: int = 1,
+        temperature: float = 0.0,
+        stop_on_success: bool = True
+    ) -> List[BenchmarkResult]:
+        results = []
+        data = self.dev_data[:limit] if limit else self.dev_data
+        print(f"\nRunning BIRD benchmark on {len(data)} samples...")
+        print(f"Max attempts: {max_attempts} | Temperature: {temperature} | Stop on success: {stop_on_success}")
+
+        for item in tqdm(data):
+            question = self._field(item, ["question", "nl_question", "query"])
+            gold_sql = self._field(item, ["query", "sql", "gold_sql"])
+            db_id = self._field(item, ["db_id", "database_id", "db_name"])
+
+            if not question or not gold_sql or not db_id:
+                results.append(BenchmarkResult(
+                    question=question or "",
+                    gold_sql=gold_sql or "",
+                    predicted_sql="",
+                    execution_match=False,
+                    exact_match=False,
+                    attempts=0,
+                    error="Missing required fields in BIRD sample",
+                    latency=0.0
+                ))
+                continue
+
+            db_path = self._get_db_path(db_id)
+            if not db_path:
+                results.append(BenchmarkResult(
+                    question=question,
+                    gold_sql=gold_sql,
+                    predicted_sql="",
+                    execution_match=False,
+                    exact_match=False,
+                    attempts=0,
+                    error=f"Database not found for {db_id}",
+                    latency=0.0
+                ))
+                continue
+
+            schema = self._get_schema(db_path)
+
+            predicted_sql = ""
+            error = None
+            exec_match = False
+            exact_match = False
+            total_latency = 0.0
+            attempts_used = 0
+
+            gold_success, gold_result = self.execute_sql(db_path, gold_sql)
+            if not gold_success:
+                results.append(BenchmarkResult(
+                    question=question,
+                    gold_sql=gold_sql,
+                    predicted_sql="",
+                    execution_match=False,
+                    exact_match=False,
+                    attempts=0,
+                    error=f"Gold execution failed: {gold_result}",
+                    latency=0.0
+                ))
+                continue
+
+            for attempt in range(max_attempts):
+                attempts_used = attempt + 1
+                start_time = time.time()
+                try:
+                    predicted_sql = model.generate_sql(question, schema, temperature=temperature)
+                    error = None
+                except Exception as e:
+                    predicted_sql = ""
+                    error = str(e)
+                latency = time.time() - start_time
+                total_latency += latency
+
+                exec_match = False
+                exact_match = False
+                if predicted_sql and not error:
+                    pred_success, pred_result = self.execute_sql(db_path, predicted_sql)
+                    if pred_success:
+                        try:
+                            exec_match = set(map(tuple, gold_result)) == set(map(tuple, pred_result))
+                        except Exception:
+                            exec_match = gold_result == pred_result
+                    else:
+                        error = f"Execution error: {pred_result}"
+
+                    exact_match = self._normalize_sql(predicted_sql) == self._normalize_sql(gold_sql)
+
+                if stop_on_success and exec_match:
+                    break
+
+            results.append(BenchmarkResult(
+                question=question,
+                gold_sql=gold_sql,
+                predicted_sql=predicted_sql,
+                execution_match=exec_match,
+                exact_match=exact_match,
+                attempts=attempts_used,
+                error=error,
+                latency=total_latency
+            ))
+
+        return results
+
+
 def print_results(results: List[BenchmarkResult], output_file: str = None):
     """打印评测结果"""
     total = len(results)
@@ -376,6 +652,9 @@ def print_results(results: List[BenchmarkResult], output_file: str = None):
     exact_correct = sum(1 for r in results if r.exact_match)
     errors = sum(1 for r in results if r.error)
     avg_latency = sum(r.latency for r in results) / total
+    avg_attempts = sum(r.attempts for r in results) / total
+    success_attempts = [r.attempts for r in results if r.execution_match]
+    avg_attempts_success = (sum(success_attempts) / len(success_attempts)) if success_attempts else 0.0
 
     report = f"""
 ========================================
@@ -387,6 +666,8 @@ Execution Accuracy: {exec_correct}/{total} ({100*exec_correct/total:.2f}%)
 Exact Match:        {exact_correct}/{total} ({100*exact_correct/total:.2f}%)
 Errors:             {errors}/{total} ({100*errors/total:.2f}%)
 Avg Latency:        {avg_latency:.2f}s
+Avg Attempts (all): {avg_attempts:.2f}
+Avg Attempts (ok):  {avg_attempts_success:.2f}
 
 ========================================
 """
@@ -413,6 +694,7 @@ Avg Latency:        {avg_latency:.2f}s
                 'predicted_sql': r.predicted_sql,
                 'execution_match': r.execution_match,
                 'exact_match': r.exact_match,
+                'attempts': r.attempts,
                 'error': r.error,
                 'latency': r.latency
             } for r in results], f, indent=2, ensure_ascii=False)
@@ -426,11 +708,17 @@ def main():
                         help='Model backend to use')
     parser.add_argument('--model-name', type=str, default='sqlcoder:7b',
                         help='Model name (e.g., sqlcoder:7b, defog/sqlcoder-7b)')
+    parser.add_argument('--ollama-base-url', type=str, default=None,
+                        help='Override Ollama base URL (default: env OLLAMA_BASE_URL)')
     parser.add_argument('--benchmark', type=str, default='spider',
                         choices=['spider', 'bird'],
                         help='Benchmark dataset')
     parser.add_argument('--limit', type=int, default=100,
                         help='Number of samples to evaluate (default: 100)')
+    parser.add_argument('--max-attempts', type=int, default=1,
+                        help='Max attempts per question (default: 1)')
+    parser.add_argument('--temperature', type=float, default=0.0,
+                        help='Sampling temperature for multi-attempt runs')
     parser.add_argument('--output', type=str, default=None,
                         help='Output file for detailed results')
 
@@ -443,7 +731,7 @@ def main():
     print(f"\nInitializing model: {args.model} ({args.model_name})")
 
     if args.model == 'ollama':
-        model = OllamaModel(model_name=args.model_name)
+        model = OllamaModel(model_name=args.model_name, base_url=args.ollama_base_url)
     elif args.model == 'vllm':
         model = VLLMModel(model_name=args.model_name)
     elif args.model == 'transformers':
@@ -453,10 +741,15 @@ def main():
     if args.benchmark == 'spider':
         benchmark = SpiderBenchmark(data_dir)
     else:
-        print("BIRD benchmark not yet implemented, using Spider.")
-        benchmark = SpiderBenchmark(data_dir)
+        benchmark = BIRDBenchmark(data_dir)
 
-    results = benchmark.run(model, limit=args.limit)
+    results = benchmark.run(
+        model,
+        limit=args.limit,
+        max_attempts=args.max_attempts,
+        temperature=args.temperature,
+        stop_on_success=True
+    )
 
     # 输出结果
     output_file = args.output or str(PROJECT_DIR / "results" / f"{args.benchmark}_{args.model_name.replace('/', '_')}_results.json")

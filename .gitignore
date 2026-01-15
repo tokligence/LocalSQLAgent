@@ -58,5 +58,6 @@ models/
 # Benchmark data (large files)
 data/spider/
 data/bird/
+data/*.zip
 !data/test_samples.json
 !data/init/
