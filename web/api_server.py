@@ -8,6 +8,7 @@ from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 import json
 import sys
+import os
 import time
 import uuid
 from typing import Dict, List, Optional, Any
@@ -172,7 +173,7 @@ def extract_db_config(messages: List[Dict], data: Dict) -> Dict:
     # Default configuration
     return {
         "type": "postgresql",
-        "host": "localhost",
+        "host": os.getenv("DB_HOST", "localhost"),
         "port": 5432,
         "database": "test",
         "user": "postgres",

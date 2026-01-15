@@ -10,6 +10,7 @@ Fixes:
 import streamlit as st
 import json
 import sys
+import os
 import html
 from typing import Dict, List, Optional, Any
 import time
@@ -211,10 +212,11 @@ if 'query_in_progress' not in st.session_state:
 
 # Database configurations
 if 'db_configs' not in st.session_state:
+    default_db_host = os.getenv("DB_HOST", "localhost")
     st.session_state.db_configs = {
         'postgresql': {
             'type': 'postgresql',
-            'host': 'localhost',
+            'host': default_db_host,
             'port': 5432,
             'database': 'benchmark',
             'user': 'text2sql',
@@ -223,7 +225,7 @@ if 'db_configs' not in st.session_state:
         },
         'mysql': {
             'type': 'mysql',
-            'host': 'localhost',
+            'host': default_db_host,
             'port': 3306,
             'database': 'benchmark',
             'user': 'root',
@@ -232,7 +234,7 @@ if 'db_configs' not in st.session_state:
         },
         'clickhouse': {
             'type': 'clickhouse',
-            'host': 'localhost',
+            'host': default_db_host,
             'port': 8123,
             'database': 'benchmark',
             'user': 'default',
