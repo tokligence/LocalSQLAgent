@@ -5,6 +5,7 @@ Supports multiple schema sources including database introspection, MCP, and API 
 
 import json
 import time
+import re
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
@@ -85,6 +86,7 @@ class DatabaseIntrospectionProvider(SchemaProvider):
         self.db_type = db_type
         self.connection_params = connection_params
         self.connection = None
+        self.last_error = None
 
     def _connect(self):
         """Establish database connection"""
@@ -116,8 +118,10 @@ class DatabaseIntrospectionProvider(SchemaProvider):
                 cursor.close()
             elif self.db_type == "clickhouse":
                 self.connection.query("SELECT 1")
+            self.last_error = None
             return True
-        except Exception:
+        except Exception as e:
+            self.last_error = str(e)
             return False
         finally:
             self._disconnect()
@@ -137,12 +141,16 @@ class DatabaseIntrospectionProvider(SchemaProvider):
             elif self.db_type == "clickhouse":
                 tables = self._get_clickhouse_schema()
 
+            self.last_error = None
             return SchemaInfo(
                 database_name=self.connection_params.get("database", "unknown"),
                 tables=tables,
                 source=SchemaSourceType.DATABASE_INTROSPECTION,
                 metadata={"db_type": self.db_type}
             )
+        except Exception as e:
+            self.last_error = str(e)
+            raise
         finally:
             self._disconnect()
 
@@ -395,6 +403,7 @@ class MCPSchemaProvider(SchemaProvider):
         self.mcp_server_url = mcp_server_url
         self.api_key = api_key
         self.cached_schema = None
+        self.last_error = None
 
     def validate_connection(self) -> bool:
         """Validate MCP server connection"""
@@ -402,8 +411,13 @@ class MCPSchemaProvider(SchemaProvider):
             import requests
             headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
             response = requests.get(f"{self.mcp_server_url}/health", headers=headers, timeout=5)
-            return response.status_code == 200
-        except:
+            if response.status_code == 200:
+                self.last_error = None
+                return True
+            self.last_error = response.text
+            return False
+        except Exception as e:
+            self.last_error = str(e)
             return False
 
     def get_schema(self) -> SchemaInfo:
@@ -433,6 +447,7 @@ class MCPSchemaProvider(SchemaProvider):
         )
 
         if response.status_code != 200:
+            self.last_error = response.text
             raise Exception(f"Failed to fetch schema from MCP: {response.text}")
 
         mcp_schema = response.json()
@@ -467,6 +482,7 @@ class MCPSchemaProvider(SchemaProvider):
             metadata={"server": self.mcp_server_url}
         )
 
+        self.last_error = None
         return self.cached_schema
 
     def get_table_info(self, table_name: str) -> Optional[TableInfo]:
@@ -491,6 +507,21 @@ class SchemaManager:
         self.cache_timestamp = None
         self.cache_ttl = 3600  # 1 hour
         self.allow_fallback_schema = allow_fallback_schema
+
+    def _sanitize_error(self, error: Optional[str]) -> str:
+        if not error:
+            return "unknown error"
+        sanitized = re.sub(r'password["\']?\s*[:=]\s*[^\\s,)]*', 'password=***', error, flags=re.IGNORECASE)
+        sanitized = re.sub(r'postgresql://[^@]+@', 'postgresql://***@', sanitized)
+        sanitized = re.sub(r'mysql://[^@]+@', 'mysql://***@', sanitized)
+        return sanitized
+
+    def _provider_label(self, provider: SchemaProvider) -> str:
+        if hasattr(provider, "db_type"):
+            return f"db:{getattr(provider, 'db_type')}"
+        if isinstance(provider, MCPSchemaProvider):
+            return "mcp"
+        return provider.__class__.__name__
 
     def get_schema(self, force_refresh: bool = False) -> SchemaInfo:
         """
@@ -520,6 +551,7 @@ class SchemaManager:
 
         # Try primary provider
         logger.debug("Attempting to validate primary provider connection...")
+        errors = []
 
         if self.primary_provider and self.primary_provider.validate_connection():
             try:
@@ -530,8 +562,12 @@ class SchemaManager:
                 return self.schema_cache
             except Exception as e:
                 logger.error(f"Primary provider failed: {str(e)}", exc_info=True)
+                errors.append(f"{self._provider_label(self.primary_provider)}: {self._sanitize_error(str(e))}")
         else:
             logger.warning("Primary provider validation failed or provider is None")
+            if self.primary_provider:
+                last_error = getattr(self.primary_provider, "last_error", None)
+                errors.append(f"{self._provider_label(self.primary_provider)}: {self._sanitize_error(last_error)}")
 
         # Try fallback providers
         for i, provider in enumerate(self.fallback_providers):
@@ -546,12 +582,16 @@ class SchemaManager:
                     return self.schema_cache
                 except Exception as e:
                     logger.error(f"Fallback provider {i+1} failed: {str(e)}")
+                    errors.append(f"{self._provider_label(provider)}: {self._sanitize_error(str(e))}")
             else:
                 logger.warning(f"Fallback provider {i+1} validation failed")
+                last_error = getattr(provider, "last_error", None) if provider else None
+                errors.append(f"{self._provider_label(provider) if provider else 'unknown'}: {self._sanitize_error(last_error)}")
 
         if not self.allow_fallback_schema:
             logger.error("Schema discovery failed for all providers")
-            raise Exception("Schema discovery failed for all providers")
+            error_details = "; ".join(errors) if errors else "no provider details"
+            raise Exception(f"Schema discovery failed for all providers: {error_details}")
 
         # If we reach here, provide a fallback schema with basic structure
         logger.warning("No schema providers available, using fallback schema")

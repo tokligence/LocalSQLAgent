@@ -416,6 +416,53 @@ class IntelligentSQLAgent:
         self.schema_cache = self.schema_manager.get_schema(force_refresh)
         return self.schema_cache
 
+    def get_schema_overview(
+        self,
+        force_refresh: bool = False,
+        include_samples: bool = True,
+        max_samples_per_table: int = 3
+    ) -> Dict[str, Any]:
+        """Return a structured schema overview for UI or API clients."""
+        schema = self._get_schema(force_refresh)
+        relationships = self.schema_manager.get_table_relationships(schema)
+
+        tables = []
+        for table_name, table_info in schema.tables.items():
+            columns = []
+            for col in table_info.columns:
+                col_entry = {
+                    "name": col.name,
+                    "type": col.data_type,
+                    "nullable": col.is_nullable,
+                    "primary_key": col.is_primary_key,
+                    "foreign_key": col.foreign_key_ref if col.is_foreign_key else None
+                }
+                if col.description:
+                    col_entry["description"] = col.description
+                columns.append(col_entry)
+
+            table_entry = {
+                "name": table_name,
+                "row_count": table_info.row_count,
+                "description": table_info.description,
+                "columns": columns,
+                "relationships": relationships.get(table_name, [])
+            }
+
+            if include_samples and table_info.sample_data:
+                table_entry["sample_data"] = table_info.sample_data[:max_samples_per_table]
+
+            tables.append(table_entry)
+
+        return {
+            "database": schema.database_name,
+            "db_type": self.db_type,
+            "source": schema.source.value,
+            "table_count": len(schema.tables),
+            "tables": tables,
+            "metadata": schema.metadata or {}
+        }
+
     def _needs_clarification(self, context: QueryContext) -> bool:
         """Check if clarification is needed"""
         if not context.detected_ambiguities:

@@ -115,11 +115,19 @@ def chat_completions():
                 }
             }), 400
 
+        # Determine query mode
+        query_mode = detect_query_mode(query, data.get("query_mode") or data.get("mode"))
+
         # Generate response
+        if query_mode == "explore":
+            content = build_schema_content(agent)
+            if stream:
+                return stream_content_response(content, model)
+            return build_openai_response(content, model, query)
+
         if stream:
             return stream_response(agent, query, model)
-        else:
-            return normal_response(agent, query, model)
+        return normal_response(agent, query, model)
 
     except Exception as e:
         return jsonify({
@@ -190,6 +198,37 @@ def extract_query_from_messages(messages: List[Dict]) -> Optional[str]:
     return None
 
 
+def detect_query_mode(query: str, requested_mode: Optional[str] = None) -> str:
+    """Detect whether this request should return schema overview instead of SQL."""
+    if requested_mode:
+        normalized = str(requested_mode).lower()
+        if normalized in ("explore", "schema", "schema_overview", "introspect"):
+            return "explore"
+
+    if not query:
+        return "normal"
+
+    query_lower = query.lower().strip()
+    explore_keywords = (
+        "explore the database",
+        "explore database",
+        "show schema",
+        "database schema",
+        "list tables",
+        "show tables",
+        "describe tables",
+        "describe table",
+        "表结构",
+        "数据库结构",
+        "查看表",
+        "schema"
+    )
+    if any(keyword in query_lower for keyword in explore_keywords):
+        return "explore"
+
+    return "normal"
+
+
 def create_agent(model: str, db_config: Dict, execution_policy: Dict) -> IntelligentSQLAgent:
     """Create an intelligent SQL agent"""
     actual_model = MODEL_MAPPING.get(model, "qwen2.5-coder:7b")
@@ -203,12 +242,8 @@ def create_agent(model: str, db_config: Dict, execution_policy: Dict) -> Intelli
     )
 
 
-def normal_response(agent: IntelligentSQLAgent, query: str, model: str) -> Response:
-    """Generate normal (non-streaming) response"""
-    result = agent.execute_query(query)
-    content = build_response_content(result)
-
-    # Build OpenAI-compatible response
+def build_openai_response(content: str, model: str, query: str) -> Response:
+    """Wrap content in an OpenAI-compatible response envelope."""
     response = {
         "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
         "object": "chat.completion",
@@ -223,21 +258,55 @@ def normal_response(agent: IntelligentSQLAgent, query: str, model: str) -> Respo
             "finish_reason": "stop"
         }],
         "usage": {
-            "prompt_tokens": len(query.split()),
+            "prompt_tokens": len(query.split()) if query else 0,
             "completion_tokens": len(content.split()),
-            "total_tokens": len(query.split()) + len(content.split())
+            "total_tokens": (len(query.split()) if query else 0) + len(content.split())
         }
     }
-
     return jsonify(response)
+
+
+def normal_response(agent: IntelligentSQLAgent, query: str, model: str) -> Response:
+    """Generate normal (non-streaming) response"""
+    result = agent.execute_query(query)
+    content = build_response_content(result)
+    return build_openai_response(content, model, query)
+
+
+def build_schema_content(agent: IntelligentSQLAgent) -> str:
+    """Build schema overview payload as JSON string."""
+    try:
+        overview = agent.get_schema_overview()
+        payload = {
+            "type": "schema_overview",
+            "success": True,
+            "schema": overview
+        }
+    except Exception as e:
+        payload = {
+            "type": "error",
+            "success": False,
+            "error": str(e)
+        }
+    return json.dumps(payload, default=str)
+
+
+def schema_response(agent: IntelligentSQLAgent, model: str, query: str) -> Response:
+    """Return schema overview instead of SQL execution."""
+    content = build_schema_content(agent)
+    return build_openai_response(content, model, query)
 
 
 def stream_response(agent: IntelligentSQLAgent, query: str, model: str) -> Response:
     """Generate streaming response (Server-Sent Events)"""
+    result = agent.execute_query(query)
+    content = build_response_content(result)
+    return stream_content_response(content, model)
 
+
+def stream_content_response(content: str, model: str) -> Response:
+    """Stream a pre-built content payload."""
     def generate():
-        result = agent.execute_query(query)
-        content = build_response_content(result)
         chunk = {
             "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
             "object": "chat.completion.chunk",
@@ -252,8 +321,6 @@ def stream_response(agent: IntelligentSQLAgent, query: str, model: str) -> Respo
             }]
         }
         yield f"data: {json.dumps(chunk)}\n\n"
-
-        # Send done signal
         yield "data: [DONE]\n\n"
 
     return Response(generate(), mimetype='text/event-stream')

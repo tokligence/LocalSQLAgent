@@ -4,6 +4,9 @@
 对比直接生成 vs 多次尝试的准确率提升
 """
 
+import pytest
+pytest.skip("Legacy exploratory agent removed; superseded by IntelligentSQLAgent.", allow_module_level=True)
+
 import json
 import time
 import psycopg2

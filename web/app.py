@@ -12,7 +12,7 @@ import json
 import sys
 import os
 import html
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 import time
 from datetime import datetime, timedelta
 import pandas as pd
@@ -36,158 +36,263 @@ st.set_page_config(
 # Production-optimized styling
 st.markdown("""
 <style>
-    /* Clean production design */
-    .main {
-        background: #ffffff;
-        padding: 0;
-    }
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
-    /* Hide Streamlit branding */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
+:root {
+    --bg: #f6f2ea;
+    --panel: #ffffff;
+    --panel-muted: #fff7e8;
+    --ink: #1b1b1b;
+    --muted: #6b6f76;
+    --accent: #ff6b35;
+    --accent-2: #1f7a8c;
+    --accent-3: #f2b705;
+    --line: #eadfcd;
+    --shadow: 0 12px 28px rgba(20, 20, 20, 0.08);
+}
 
-    /* Message styling */
-    .message-wrapper {
-        display: flex;
-        margin: 12px 0;
-        align-items: flex-start;
-    }
+/* Global layout */
+.stApp {
+    background:
+        radial-gradient(900px 320px at 8% -10%, rgba(255, 107, 53, 0.15), transparent 60%),
+        radial-gradient(700px 260px at 90% 0%, rgba(31, 122, 140, 0.12), transparent 55%),
+        linear-gradient(180deg, #f9f5ef 0%, #f6f2ea 60%, #f3efe6 100%);
+    color: var(--ink);
+    font-family: 'Space Grotesk', sans-serif;
+}
 
-    .user-message-wrapper {
-        justify-content: flex-end;
-    }
+.main {
+    background: transparent;
+    padding: 0;
+}
 
-    .assistant-message-wrapper {
-        justify-content: flex-start;
-    }
+.main .block-container {
+    padding-top: 1.6rem;
+    padding-bottom: 2rem;
+}
 
-    .message-avatar {
-        width: 32px;
-        height: 32px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 18px;
-        margin: 0 10px;
-    }
+/* Hide Streamlit branding */
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+header {visibility: hidden;}
 
-    .user-avatar {
-        background: #007AFF;
-    }
+@keyframes fadeUp {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
 
-    .assistant-avatar {
-        background: #34C759;
-    }
+/* Message styling */
+.message-wrapper {
+    display: flex;
+    margin: 14px 0;
+    align-items: flex-start;
+    gap: 12px;
+    animation: fadeUp 0.35s ease;
+}
 
-    .message-content {
-        max-width: 70%;
-        padding: 10px 15px;
-        border-radius: 15px;
-        word-wrap: break-word;
-    }
+.user-message-wrapper {
+    justify-content: flex-end;
+}
 
-    .user-message {
-        background: #007AFF;
-        color: white;
-        border-bottom-right-radius: 5px;
-    }
+.assistant-message-wrapper {
+    justify-content: flex-start;
+}
 
-    .assistant-message {
-        background: #F0F0F5;
-        color: #1D1D1F;
-        border-bottom-left-radius: 5px;
-    }
+.message-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    margin: 0 4px;
+    box-shadow: var(--shadow);
+}
 
-    /* SQL Result styling */
-    .sql-result {
-        background: #f8f9fa;
-        border: 1px solid #dee2e6;
-        border-radius: 8px;
-        padding: 15px;
-        margin: 10px 0;
-    }
+.user-avatar {
+    background: var(--accent);
+    color: #fff;
+}
 
-    .sql-code {
-        background: #2d3748;
-        color: #48bb78;
-        padding: 12px;
-        border-radius: 6px;
-        font-family: 'Courier New', monospace;
-        font-size: 13px;
-        margin: 10px 0;
-        overflow-x: auto;
-    }
+.assistant-avatar {
+    background: var(--accent-2);
+    color: #fff;
+}
 
-    .attempt-indicator {
-        background: #fff3cd;
-        border: 1px solid #ffc107;
-        border-radius: 4px;
-        padding: 8px 12px;
-        margin: 8px 0;
-        color: #856404;
-    }
+.message-content {
+    max-width: 72%;
+    padding: 12px 16px;
+    border-radius: 16px;
+    word-wrap: break-word;
+    box-shadow: var(--shadow);
+    font-size: 0.98rem;
+    line-height: 1.45;
+}
 
-    .status-thinking {
-        background: #e7f3ff;
-        border: 1px solid #007AFF;
-        color: #004085;
-        padding: 8px 12px;
-        border-radius: 4px;
-        margin: 8px 0;
-    }
+.user-message {
+    background: var(--accent);
+    color: #fff;
+    border-bottom-right-radius: 6px;
+}
 
-    /* Performance metrics (smaller) */
-    .metrics-row {
-        display: flex;
-        gap: 12px;
-        margin-top: 8px;
-        font-size: 11px;
-        color: #6c757d;
-    }
+.assistant-message {
+    background: var(--panel);
+    color: var(--ink);
+    border-bottom-left-radius: 6px;
+    border: 1px solid var(--line);
+}
 
-    .metric-badge {
-        background: #f8f9fa;
-        padding: 3px 8px;
-        border-radius: 4px;
-        border: 1px solid #e9ecef;
-    }
+/* SQL Result styling */
+.sql-result {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 16px 18px;
+    margin: 12px 0;
+    box-shadow: var(--shadow);
+    animation: fadeUp 0.35s ease;
+}
 
-    /* Example chips */
-    .example-chips {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-        margin: 8px 0;
-    }
+.sql-code {
+    background: #1f2937;
+    color: #f2b705;
+    padding: 12px 14px;
+    border-radius: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    margin: 10px 0;
+    overflow-x: auto;
+}
 
-    .examples-hint {
-        font-size: 13px;
-        color: #6c757d;
-        margin: 8px 0;
-    }
+.attempt-indicator {
+    background: #fff0d2;
+    border: 1px solid #f2b705;
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin: 8px 0;
+    color: #7a5200;
+    font-size: 0.92rem;
+}
 
-    /* Streamlit overrides for compact design */
-    .stButton > button {
-        font-size: 13px;
-        padding: 6px 12px;
-        border-radius: 6px;
-    }
+.status-thinking {
+    background: #eef7fb;
+    border: 1px solid #8fc8d9;
+    color: #1f5d6b;
+    padding: 8px 12px;
+    border-radius: 8px;
+    margin: 8px 0;
+    font-size: 0.92rem;
+}
 
-    .stTextInput > div > div > input {
-        font-size: 14px;
-        padding: 8px 12px;
-    }
+/* Schema overview */
+.schema-card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 16px 18px;
+    box-shadow: var(--shadow);
+    margin: 12px 0;
+}
 
-    div[data-testid="stMetricValue"] {
-        font-size: 16px;
-    }
+.schema-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+}
 
-    .stAlert {
-        padding: 8px 12px;
-        font-size: 13px;
-    }
+.schema-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.schema-pill {
+    background: var(--panel-muted);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 0.82rem;
+    color: var(--muted);
+}
+
+/* Header */
+.hero {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 16px 18px;
+    box-shadow: var(--shadow);
+    margin-bottom: 18px;
+}
+
+.hero-title {
+    font-size: 1.4rem;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    margin: 0;
+}
+
+.hero-sub {
+    color: var(--muted);
+    font-size: 0.95rem;
+    margin: 4px 0 0 0;
+}
+
+/* Performance metrics */
+.metrics-row {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--muted);
+}
+
+.metric-badge {
+    background: #fffdf9;
+    padding: 3px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+}
+
+/* Example chips */
+.example-chips {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 10px 0;
+}
+
+.examples-hint {
+    font-size: 13px;
+    color: var(--muted);
+    margin: 8px 0;
+}
+
+/* Streamlit overrides */
+.stButton > button {
+    font-size: 13px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: #fffdf9;
+}
+
+.stTextInput > div > div > input {
+    font-size: 14px;
+    padding: 10px 12px;
+    border-radius: 12px;
+}
+
+div[data-testid="stMetricValue"] {
+    font-size: 16px;
+}
+
+.stAlert {
+    padding: 8px 12px;
+    font-size: 13px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -198,10 +303,12 @@ if 'messages' not in st.session_state:
 if 'current_db' not in st.session_state:
     st.session_state.current_db = 'postgresql'
 
+if 'selected_dbs' not in st.session_state:
+    st.session_state.selected_dbs = []
+
 if 'conversation_state' not in st.session_state:
     st.session_state.conversation_state = {
-        'awaiting_clarification': False,
-        'original_query': None
+        'pending_clarifications': {}
     }
 
 if 'processing_status' not in st.session_state:
@@ -270,7 +377,49 @@ EXAMPLE_QUERIES = [
 logger = get_logger("WebUI")
 
 
-def call_api(query: str, db_config: Dict[str, Any], execution_policy: Dict[str, Any]) -> Dict[str, Any]:
+def is_explore_query(query: str) -> bool:
+    """Detect if the user is asking for schema exploration."""
+    if not query:
+        return False
+    query_lower = query.lower().strip()
+    explore_keywords = (
+        "explore the database",
+        "explore database",
+        "show schema",
+        "database schema",
+        "list tables",
+        "show tables",
+        "describe tables",
+        "describe table",
+        "schema",
+        "表结构",
+        "数据库结构",
+        "查看表"
+    )
+    return any(keyword in query_lower for keyword in explore_keywords)
+
+
+def resolve_clarification_target(user_input: str, pending_keys: List[str]) -> Tuple[Optional[str], str]:
+    """Resolve which database a clarification reply targets."""
+    if not pending_keys:
+        return None, user_input
+    if len(pending_keys) == 1:
+        return pending_keys[0], user_input
+
+    lowered = user_input.strip()
+    for key in pending_keys:
+        prefix = f"{key}:"
+        if lowered.lower().startswith(prefix.lower()):
+            return key, lowered[len(prefix):].strip()
+
+    return None, user_input
+
+def call_api(
+    query: str,
+    db_config: Dict[str, Any],
+    execution_policy: Dict[str, Any],
+    query_mode: Optional[str] = None
+) -> Dict[str, Any]:
     """Call the OpenAI-compatible API server and parse JSON content"""
     base_url = st.session_state.api_config.get("base_url", "http://localhost:8711").rstrip("/")
     payload = {
@@ -280,6 +429,8 @@ def call_api(query: str, db_config: Dict[str, Any], execution_policy: Dict[str, 
         "db_config": db_config,
         "execution_policy": execution_policy
     }
+    if query_mode:
+        payload["query_mode"] = query_mode
 
     response = requests.post(f"{base_url}/v1/chat/completions", json=payload, timeout=180)
     response.raise_for_status()
@@ -298,11 +449,87 @@ def call_api(query: str, db_config: Dict[str, Any], execution_policy: Dict[str, 
 
 def render_message(msg: Dict):
     """Render a single message"""
-    if msg.get("type") == "sql_result":
+    if msg.get("type") == "schema_overview":
+        schema = msg.get("schema", {}) or {}
+        db_label = msg.get("db_label")
+        db_name = schema.get("database", "unknown")
+        db_type = schema.get("db_type", "unknown")
+        title = f"{db_name} ({db_type})"
+        if db_label:
+            title = f"{db_label} · {title}"
+
+        st.markdown("<div class='schema-card'>", unsafe_allow_html=True)
+        st.markdown(
+            f"""
+            <div class="schema-header">
+                <div class="schema-title">Schema Overview</div>
+                <div class="schema-pill">{title}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        st.markdown(
+            f"""
+            <div class="metrics-row">
+                <div class="metric-badge">Tables: {schema.get('table_count', 0)}</div>
+                <div class="metric-badge">Source: {schema.get('source', 'unknown')}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        tables = schema.get("tables", [])
+        if tables:
+            for table in tables:
+                table_name = table.get("name", "unknown")
+                columns = table.get("columns", [])
+                row_count = table.get("row_count")
+                header = f"{table_name} ({len(columns)} cols)"
+                if row_count is not None:
+                    header = f"{header} · {row_count} rows"
+                with st.expander(header, expanded=False):
+                    if table.get("description"):
+                        st.caption(table.get("description"))
+
+                    if columns:
+                        col_rows = []
+                        for col in columns:
+                            col_rows.append({
+                                "name": col.get("name"),
+                                "type": col.get("type"),
+                                "pk": "Y" if col.get("primary_key") else "",
+                                "fk": col.get("foreign_key") or "",
+                                "nullable": "Y" if col.get("nullable") else ""
+                            })
+                        st.dataframe(
+                            pd.DataFrame(col_rows),
+                            use_container_width=True,
+                            hide_index=True
+                        )
+
+                    sample_data = table.get("sample_data")
+                    if sample_data:
+                        st.markdown("Sample data")
+                        st.dataframe(
+                            pd.DataFrame(sample_data),
+                            use_container_width=True,
+                            hide_index=True
+                        )
+        else:
+            st.info("No tables found in schema.")
+
+    elif msg.get("type") == "sql_result":
         # SQL Result Message
         st.markdown(f"""
             <div class="sql-result">
         """, unsafe_allow_html=True)
+
+        if msg.get("db_label"):
+            st.markdown(
+                f"<div class='schema-pill'>DB: {msg.get('db_label')}</div>",
+                unsafe_allow_html=True
+            )
 
         if msg.get("success"):
             # Metrics row (smaller)
@@ -378,7 +605,10 @@ def render_message(msg: Dict):
                         # Fallback to simple display
                         st.json(msg["data"])
         else:
-            st.error(msg.get("error", "Query failed"))
+            error_text = msg.get("error", "Query failed")
+            st.error(error_text)
+            if "Schema discovery failed" in error_text:
+                st.caption("Check host/port/user/password and make sure the database is reachable.")
 
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -421,17 +651,20 @@ def render_message(msg: Dict):
         # Assistant message (escape HTML to prevent XSS)
         import html
         escaped_content = html.escape(msg['content'])
+        db_label = msg.get("db_label")
+        label_html = f"<div class='schema-pill'>DB: {html.escape(db_label)}</div>" if db_label else ""
         st.markdown(f"""
             <div class="message-wrapper assistant-message-wrapper">
                 <div class="message-avatar assistant-avatar">🤖</div>
                 <div class="message-content assistant-message">
+                    {label_html}
                     {escaped_content}
                 </div>
             </div>
         """, unsafe_allow_html=True)
 
 
-def process_query_improved(user_input: str):
+def process_query_improved(user_input: str, target_dbs: Optional[List[str]] = None):
     """Improved query processing with immediate feedback"""
 
     # Add thinking message immediately
@@ -443,25 +676,26 @@ def process_query_improved(user_input: str):
     }
     st.session_state.messages.append(thinking_msg)
 
-    execute_query_improved(user_input)
+    execute_query_improved(user_input, target_dbs=target_dbs)
 
 
-def execute_query_improved(query: str):
+def execute_query_improved(query: str, target_dbs: Optional[List[str]] = None):
     """Improved query execution with agent-driven intelligence"""
     # Remove thinking message
     st.session_state.messages = [m for m in st.session_state.messages if m.get("type") != "thinking"]
 
-    config = st.session_state.db_configs[st.session_state.current_db]
-    if not config.get("enabled", False):
-        error_msg = {
+    if target_dbs is None:
+        target_dbs = st.session_state.selected_dbs or []
+    if not target_dbs and st.session_state.current_db:
+        target_dbs = [st.session_state.current_db]
+    if not target_dbs:
+        st.session_state.messages.append({
             "role": "assistant",
-            "content": f"❌ {st.session_state.current_db.upper()} is disabled in settings",
+            "content": "❌ No database selected. Enable and select a database in the sidebar.",
             "timestamp": datetime.now().isoformat()
-        }
-        st.session_state.messages.append(error_msg)
+        })
         return
 
-    db_connection_config = {k: v for k, v in config.items() if k != "enabled"}
     execution_policy = st.session_state.get("execution_policy", {
         "read_only": True,
         "allow_dml": False,
@@ -471,55 +705,93 @@ def execute_query_improved(query: str):
         "default_limit": 10000,
         "enforce_default_limit": True
     })
+    query_mode = "explore" if is_explore_query(query) else None
+    pending = st.session_state.conversation_state.get("pending_clarifications", {})
 
     try:
-        response = call_api(query, db_connection_config, execution_policy)
+        for db_key in target_dbs:
+            config = st.session_state.db_configs.get(db_key)
+            if not config:
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": f"❌ Unknown database: {db_key}",
+                    "timestamp": datetime.now().isoformat()
+                })
+                continue
 
-        if response.get("type") == "clarification":
-            clarifications = response.get("clarifications", [])
-            if clarifications:
-                prompt = clarifications[0]
-                options = prompt.get("options", [])
-                message = f"🤔 {prompt.get('keyword', 'Clarification needed')}: {', '.join(options[:3])}"
-            else:
-                message = "🤔 Clarification needed. Please provide more details."
+            if not config.get("enabled", False):
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": f"❌ {db_key} is disabled in settings",
+                    "timestamp": datetime.now().isoformat()
+                })
+                continue
 
-            clarification_msg = {
-                "role": "assistant",
-                "content": message,
-                "timestamp": datetime.now().isoformat()
-            }
-            st.session_state.messages.append(clarification_msg)
-            st.session_state.conversation_state['awaiting_clarification'] = True
-            st.session_state.conversation_state['original_query'] = query
-            return
+            db_connection_config = {k: v for k, v in config.items() if k != "enabled"}
+            response = call_api(query, db_connection_config, execution_policy, query_mode=query_mode)
 
-        if response.get("type") == "sql_result" and response.get("success"):
-            result_msg = {
+            if response.get("type") == "clarification":
+                clarifications = response.get("clarifications", [])
+                if clarifications:
+                    prompt = clarifications[0]
+                    options = prompt.get("options", [])
+                    base_message = f"🤔 {prompt.get('keyword', 'Clarification needed')}: {', '.join(options[:3])}"
+                else:
+                    base_message = "🤔 Clarification needed. Please provide more details."
+
+                if len(target_dbs) > 1:
+                    message = f"{base_message} Reply with '{db_key}: <answer>'"
+                else:
+                    message = base_message
+
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": message,
+                    "db_label": db_key,
+                    "timestamp": datetime.now().isoformat()
+                })
+                pending[db_key] = {"original_query": query}
+                continue
+
+            if response.get("type") == "schema_overview" and response.get("success"):
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "type": "schema_overview",
+                    "success": True,
+                    "schema": response.get("schema"),
+                    "db_label": db_key,
+                    "timestamp": datetime.now().isoformat()
+                })
+                continue
+
+            if response.get("type") == "sql_result" and response.get("success"):
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "type": "sql_result",
+                    "success": True,
+                    "sql": response.get("sql"),
+                    "data": response.get("data"),
+                    "columns": response.get("columns"),
+                    "row_count": response.get("row_count", 0),
+                    "execution_time": response.get("execution_time"),
+                    "attempts": response.get("attempts", 1),
+                    "results": response.get("results"),
+                    "affected_rows": response.get("affected_rows"),
+                    "db_label": db_key,
+                    "timestamp": datetime.now().isoformat()
+                })
+                continue
+
+            st.session_state.messages.append({
                 "role": "assistant",
                 "type": "sql_result",
-                "success": True,
-                "sql": response.get("sql"),
-                "data": response.get("data"),
-                "columns": response.get("columns"),
-                "row_count": response.get("row_count", 0),
-                "execution_time": response.get("execution_time"),
-                "attempts": response.get("attempts", 1),
-                "results": response.get("results"),
-                "affected_rows": response.get("affected_rows"),
+                "success": False,
+                "error": response.get("error", "Query execution failed"),
+                "db_label": db_key,
                 "timestamp": datetime.now().isoformat()
-            }
-            st.session_state.messages.append(result_msg)
-            return
+            })
 
-        error_msg = {
-            "role": "assistant",
-            "type": "sql_result",
-            "success": False,
-            "error": response.get("error", "Query execution failed"),
-            "timestamp": datetime.now().isoformat()
-        }
-        st.session_state.messages.append(error_msg)
+        st.session_state.conversation_state["pending_clarifications"] = pending
 
     except Exception as e:
         logger.error(f"API request error: {str(e)}", exc_info=True)
@@ -540,27 +812,38 @@ def render_sidebar():
 
         # Database selector
         st.markdown("### Database")
-        active_dbs = [db for db, config in st.session_state.db_configs.items()
-                     if config['enabled']]
+        enabled_dbs = [db for db, config in st.session_state.db_configs.items()
+                      if config.get('enabled')]
 
-        if active_dbs:
-            current_db = st.selectbox(
-                "Active Database",
-                active_dbs,
+        if enabled_dbs:
+            default_selected = [db for db in st.session_state.selected_dbs if db in enabled_dbs]
+            if not default_selected:
+                default_selected = [enabled_dbs[0]]
+
+            selected_dbs = st.multiselect(
+                "Query Targets",
+                enabled_dbs,
+                default=default_selected,
                 format_func=lambda x: x.upper(),
                 label_visibility="collapsed"
             )
 
-            if current_db != st.session_state.current_db:
-                st.session_state.current_db = current_db
-                # Clear messages when switching databases
+            if set(selected_dbs) != set(st.session_state.selected_dbs):
+                st.session_state.selected_dbs = selected_dbs
+                st.session_state.current_db = selected_dbs[0] if selected_dbs else None
                 st.session_state.messages = []
-                # Force a rerun to ensure clean state
+                st.session_state.conversation_state["pending_clarifications"] = {}
                 st.rerun()
 
-            # Connection status
-            config = st.session_state.db_configs[current_db]
-            st.caption(f"📡 {config['host']}:{config['port']}/{config['database']}")
+            if selected_dbs:
+                st.session_state.current_db = selected_dbs[0]
+                for db_key in selected_dbs:
+                    config = st.session_state.db_configs[db_key]
+                    st.caption(f"📡 {db_key}: {config['host']}:{config['port']}/{config['database']}")
+            else:
+                st.warning("Select at least one database to run queries.")
+        else:
+            st.warning("No enabled databases. Configure one below.")
 
         st.markdown("---")
 
@@ -570,8 +853,7 @@ def render_sidebar():
             if st.button("🗑️ Clear", use_container_width=True):
                 st.session_state.messages = []
                 st.session_state.conversation_state = {
-                    'awaiting_clarification': False,
-                    'original_query': None
+                    'pending_clarifications': {}
                 }
                 st.rerun()
 
@@ -817,8 +1099,9 @@ def main():
     """Main application with improved UX"""
     # Clean header
     st.markdown("""
-        <div style='padding: 12px 0; border-bottom: 1px solid #e5e7eb; margin-bottom: 20px;'>
-            <h2 style='margin: 0; color: #1f2937;'>💬 Tokligence SQL Assistant</h2>
+        <div class="hero">
+            <div class="hero-title">Tokligence SQL Studio</div>
+            <div class="hero-sub">Local LLMs with multi-database routing and safety rails.</div>
         </div>
     """, unsafe_allow_html=True)
 
@@ -857,6 +1140,7 @@ def main():
                             "timestamp": datetime.now().isoformat()
                         }
                         st.session_state.messages.append(user_msg)
+                        st.session_state.query_in_progress = True
                         st.rerun()  # Show message immediately
 
             st.markdown("</div></div>", unsafe_allow_html=True)
@@ -904,11 +1188,26 @@ def main():
 
         if last_user_msg:
             # Handle clarification or new query
-            if st.session_state.conversation_state['awaiting_clarification']:
-                original = st.session_state.conversation_state['original_query']
-                combined = f"{original}. {last_user_msg['content']}"
-                st.session_state.conversation_state['awaiting_clarification'] = False
-                execute_query_improved(combined)
+            pending = st.session_state.conversation_state.get("pending_clarifications", {})
+            if pending:
+                target_db, clarification = resolve_clarification_target(
+                    last_user_msg['content'],
+                    list(pending.keys())
+                )
+                if not target_db:
+                    db_list = ", ".join(pending.keys())
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": f"Please reply with '<db_name>: <answer>' for one of: {db_list}",
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    st.rerun()
+
+                original = pending[target_db]["original_query"]
+                combined = f"{original}. {clarification}"
+                pending.pop(target_db, None)
+                st.session_state.conversation_state["pending_clarifications"] = pending
+                process_query_improved(combined, target_dbs=[target_db])
             else:
                 process_query_improved(last_user_msg['content'])
 
