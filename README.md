@@ -7,7 +7,7 @@
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![By Tokligence](https://img.shields.io/badge/By-Tokligence-4CAF50)](https://github.com/tokligence)
 
-> 🎯 **From 46% to 95%+ SQL accuracy with intelligent retry strategy** - 5 attempts achieve near-perfect accuracy, zero API costs!
+> 🎯 **Multi-attempt retry lifts accuracy in simulation (46% → 95%+)** - run benchmarks on your data for real-world numbers.
 >
 > 🌐 **Full bilingual support (English & Chinese)** - 80%+ accuracy in ambiguity detection for both languages!
 
@@ -46,13 +46,14 @@ English | [中文文档](README_CN.md)
 │                    │ PostgreSQL│MySQL│MongoDB│ClickHouse   │        │
 │                    └──────────────────────────────────────┐        │
 │                                                                      │
-│  Advantages: 💰 $0 Cost  🔒 100% Privacy  ⚡ 1-3s/attempt  📈 46%→95%│
+│  Advantages: 💰 $0 Cost  🔒 100% Privacy  ⚡ 1-3s/attempt  📈 Multi-attempt gains│
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
 ## 📊 Performance Results
 
-### 🚀 Multi-Attempt Strategy Impact (Key Innovation!)
+### 🚀 Multi-Attempt Strategy Impact (Simulation)
+*Results are from `tests/test_multi_attempt_effectiveness.py`, which simulates success probabilities on 8 synthetic queries. They are not measured on a real LLM or real database and are not guaranteed in production.*
 | Max Attempts | Overall Accuracy | Easy Queries | Medium | Hard | Complex |
 |--------------|-----------------|--------------|--------|------|---------|
 | 1 (baseline) | 46.1% | 88.5% | 60.0% | 27.0% | 9.0% |
@@ -60,7 +61,7 @@ English | [中文文档](README_CN.md)
 | **5 attempts** ✅ | **100%** | **100%** | **100%** | **100%** | **100%** |
 | 7 attempts | 100% | 100% | 100% | 100% | 100% |
 
-**Key Finding**: Our multi-attempt strategy achieves **2x improvement** (46%→95%) in real-world scenarios!
+**Key Finding**: In simulation, multi-attempt improves accuracy from 46%→95%+. Real-world results vary by model, schema, and data.
 
 ### SQL Database Performance (Single Attempt Baseline)
 | Model | PostgreSQL | MySQL | ClickHouse | Average |
@@ -87,16 +88,16 @@ English | [中文文档](README_CN.md)
 
 *Costs vary significantly based on usage volume and model selection
 
-### Performance Metrics
+### Performance Metrics (Simulation)
 ```
 Hardware: Regular laptop (8GB RAM)
 Model Size: 7B parameters (4GB disk space)
 Response Time: 1-3 seconds per attempt
 
-Accuracy Improvement with Multi-Attempt Strategy:
+Accuracy Improvement with Multi-Attempt Strategy (simulation):
 • Single Attempt: 46-75% (varies by query complexity)
 • 3 Attempts: 95%+ accuracy
-• 5 Attempts: Near 100% accuracy
+• 5 Attempts: Can approach 100% in simulation (not guaranteed)
 • Time Trade-off: 5-15 seconds total for complex queries
 
 Concurrent Support: 10+ QPS
@@ -105,7 +106,7 @@ Concurrent Support: 10+ QPS
 ## ✨ Why LocalSQLAgent?
 
 ### 🎯 Real Results that Matter
-- **2X Accuracy Boost**: From 46% → 95%+ with multi-attempt strategy
+- **Multi-Attempt Lift**: 46% → 95%+ in simulation (run benchmarks for your data)
 - **Zero API Costs**: No recurring fees (vs potentially hundreds/month for cloud APIs)
 - **100% Privacy**: Your data never leaves your machine
 - **Bilingual Native**: Full support for English and Chinese queries
@@ -267,6 +268,9 @@ python quick_start.py
 - **💬 Context Memory** - Maintains conversation context
 - **📥 Export Chat** - Download conversation history as JSON
 - **🔄 Real-time Updates** - See SQL generation progress
+- **🧭 Schema Overview** - "Explore the database" shows live schema cards
+- **🧩 Multi-DB Routing** - Select multiple databases and compare answers
+- **🛡️ Safety Rails** - Read-only default, configurable DDL/DML, LIMIT guardrails
 
 Launch with: `make web-ui` or `streamlit run web/app.py`
 
@@ -299,6 +303,7 @@ import requests
 
 payload = {
     "model": "localsqlagent",
+    "query_mode": "explore",  # return schema overview instead of executing SQL
     "db_config": {
         "type": "postgresql",
         "host": "localhost",
@@ -336,6 +341,7 @@ print(response.json()["choices"][0]["message"]["content"])
 - **Adaptive strategy selection** - Chooses optimal strategy based on query complexity
 - **Error recovery** - Multiple attempts, learns from errors
 - **Cache optimization** - Intelligent caching for faster responses
+- **Execution guardrails** - Read-only default, optional DDL/DML/Admin, LIMIT injection
 
 ## 🐳 Deployment Architecture
 
