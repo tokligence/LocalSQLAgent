@@ -217,16 +217,6 @@ python benchmarks/sql_benchmark.py --model ollama:deepseek-coder:6.7b
 4. **🏠 Pure Local Execution** - Fully localized deployment using Ollama
 5. **💰 Zero Operating Cost** - No API fees, one-time deployment for permanent use
 
-## 🚀 Roadmap
-
-- [x] Support PostgreSQL, MySQL, MongoDB
-- [x] Ollama local model integration
-- [x] Multi-attempt agent implementation
-- [x] Ambiguity detection
-- [ ] Web UI interface
-- [ ] VS Code extension
-- [ ] More NoSQL database support
-- [ ] Model fine-tuning tools
 
 ## 🤝 Contributing
 

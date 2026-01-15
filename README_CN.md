@@ -315,16 +315,6 @@ python benchmarks/sql_benchmark.py --model ollama:deepseek-coder:6.7b
 - **离线可用** - 不依赖互联网连接，可在隔离环境运行
 - **快速响应** - 本地推理延迟低，1-3秒即可生成SQL
 
-## 🚀 路线图
-
-- [x] 支持PostgreSQL, MySQL, MongoDB
-- [x] 集成Ollama本地模型
-- [x] 实现多次尝试Agent
-- [x] 模糊查询检测
-- [ ] Web UI界面
-- [ ] VS Code插件
-- [ ] 更多NoSQL数据库支持
-- [ ] 模型微调工具
 
 ## 🤝 贡献
 
