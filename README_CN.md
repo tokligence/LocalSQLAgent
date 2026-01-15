@@ -116,6 +116,7 @@ pytest tests/integration/test_schema_discovery_mysql_clickhouse.py \
   tests/integration/test_multi_schema_postgres.py \
   tests/integration/test_live_services_smoke.py -q
 ```
+最新一次运行（macOS，本地Docker，2026-01-16）：`7 passed`。
 
 ### 多数据库基准（需自行运行）
 PostgreSQL/MySQL/ClickHouse/MongoDB 的准确率受 schema、数据分布与模型版本影响较大。请结合你的数据运行集成测试与基准脚本。

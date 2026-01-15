@@ -87,6 +87,7 @@ pytest tests/integration/test_schema_discovery_mysql_clickhouse.py \
   tests/integration/test_multi_schema_postgres.py \
   tests/integration/test_live_services_smoke.py -q
 ```
+Latest run (macOS, local Docker, 2026-01-16): `7 passed`.
 
 ### Baselines On Your Data
 For multi-db baselines (PostgreSQL/MySQL/ClickHouse/MongoDB), run the live integration tests and your own benchmark suite. Results vary significantly by schema quality, data distribution, and model choice.
