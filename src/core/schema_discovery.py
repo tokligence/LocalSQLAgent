@@ -82,11 +82,153 @@ class DatabaseIntrospectionProvider(SchemaProvider):
     Supports PostgreSQL, MySQL, ClickHouse
     """
 
-    def __init__(self, db_type: str, connection_params: Dict[str, Any]):
+    def __init__(
+        self,
+        db_type: str,
+        connection_params: Dict[str, Any],
+        introspection_options: Optional[Dict[str, Any]] = None
+    ):
         self.db_type = db_type
-        self.connection_params = connection_params
+        self.connection_params = dict(connection_params or {})
+        self.introspection_options = {}
         self.connection = None
         self.last_error = None
+        self.last_schema_list = []
+        self._apply_introspection_options(introspection_options)
+
+    def _apply_introspection_options(self, introspection_options: Optional[Dict[str, Any]]) -> None:
+        """Extract and normalize schema introspection options."""
+        extracted = self._extract_introspection_options(self.connection_params)
+        self.introspection_options.update(extracted)
+        if introspection_options:
+            self.introspection_options.update(introspection_options)
+        self.introspection_options = self._normalize_introspection_options(self.introspection_options)
+        if self.db_type == "clickhouse":
+            self._normalize_clickhouse_params(self.connection_params)
+
+    def _extract_introspection_options(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Pop introspection options from connection params to avoid driver errors."""
+        options = {}
+        if "schema_options" in params and isinstance(params["schema_options"], dict):
+            options.update(params.pop("schema_options"))
+
+        for key in (
+            "schema",
+            "schemas",
+            "include_samples",
+            "include_row_counts",
+            "sample_rows",
+            "row_count_strategy",
+            "max_tables",
+            "max_columns",
+        ):
+            if key in params:
+                options[key] = params.pop(key)
+        return options
+
+    def _normalize_introspection_options(self, options: Dict[str, Any]) -> Dict[str, Any]:
+        normalized = dict(options or {})
+
+        schemas = normalized.get("schemas")
+        if schemas is None and "schema" in normalized:
+            schemas = normalized.get("schema")
+        normalized["schemas"] = self._normalize_schema_list(schemas)
+
+        normalized["include_samples"] = bool(normalized.get("include_samples", False))
+        normalized["include_row_counts"] = bool(normalized.get("include_row_counts", False))
+
+        sample_rows = normalized.get("sample_rows", 3)
+        try:
+            sample_rows = int(sample_rows)
+        except Exception:
+            sample_rows = 3
+        normalized["sample_rows"] = max(sample_rows, 0)
+
+        max_tables = normalized.get("max_tables", 0)
+        try:
+            max_tables = int(max_tables)
+        except Exception:
+            max_tables = 0
+        normalized["max_tables"] = max(max_tables, 0)
+
+        max_columns = normalized.get("max_columns", 0)
+        try:
+            max_columns = int(max_columns)
+        except Exception:
+            max_columns = 0
+        normalized["max_columns"] = max(max_columns, 0)
+
+        strategy = str(normalized.get("row_count_strategy", "approx")).lower()
+        if strategy not in ("approx", "exact"):
+            strategy = "approx"
+        normalized["row_count_strategy"] = strategy
+
+        return normalized
+
+    def _normalize_schema_list(self, schemas: Any) -> List[str]:
+        if schemas is None:
+            return []
+        if isinstance(schemas, str):
+            value = schemas.strip()
+            if not value:
+                return []
+            if value in ("*", "all"):
+                return ["*"]
+            return [item.strip() for item in value.split(",") if item.strip()]
+        if isinstance(schemas, (list, tuple, set)):
+            return [str(item).strip() for item in schemas if str(item).strip()]
+        return []
+
+    def _normalize_clickhouse_params(self, params: Dict[str, Any]) -> None:
+        if "user" in params and "username" not in params:
+            params["username"] = params.pop("user")
+        if "database" not in params:
+            params["database"] = "default"
+
+    def _resolve_postgres_schemas(self, cursor) -> List[str]:
+        schemas = self.introspection_options.get("schemas", [])
+        if not schemas:
+            return ["public"]
+        if "*" in schemas:
+            cursor.execute("""
+                SELECT schema_name
+                FROM information_schema.schemata
+                WHERE schema_name NOT IN ('information_schema', 'pg_catalog')
+                AND schema_name NOT LIKE 'pg_%'
+                ORDER BY schema_name
+            """)
+            return [row[0] for row in cursor.fetchall()]
+        return schemas
+
+    def _resolve_mysql_schemas(self, cursor) -> List[str]:
+        schemas = self.introspection_options.get("schemas", [])
+        if not schemas:
+            db_name = self.connection_params.get("database")
+            if db_name:
+                return [db_name]
+            return []
+        if "*" in schemas:
+            cursor.execute("""
+                SELECT schema_name
+                FROM information_schema.schemata
+                WHERE schema_name NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys')
+                ORDER BY schema_name
+            """)
+            return [row[0] for row in cursor.fetchall()]
+        return schemas
+
+    def _resolve_clickhouse_schemas(self) -> List[str]:
+        schemas = self.introspection_options.get("schemas", [])
+        if not schemas:
+            db_name = self.connection_params.get("database", "default")
+            return [db_name]
+        if "*" in schemas:
+            result = self.connection.query("SELECT name FROM system.databases ORDER BY name")
+            return [row[0] for row in result.result_rows]
+        return schemas
+
+    def _quote_mysql_ident(self, name: str) -> str:
+        return f"`{str(name).replace('`', '``')}`"
 
     def _connect(self):
         """Establish database connection"""
@@ -142,11 +284,19 @@ class DatabaseIntrospectionProvider(SchemaProvider):
                 tables = self._get_clickhouse_schema()
 
             self.last_error = None
+            metadata = {
+                "db_type": self.db_type,
+                "schemas": self.last_schema_list,
+                "include_samples": self.introspection_options.get("include_samples", False),
+                "include_row_counts": self.introspection_options.get("include_row_counts", False),
+                "row_count_strategy": self.introspection_options.get("row_count_strategy", "approx"),
+                "sample_rows": self.introspection_options.get("sample_rows", 0),
+            }
             return SchemaInfo(
                 database_name=self.connection_params.get("database", "unknown"),
                 tables=tables,
                 source=SchemaSourceType.DATABASE_INTROSPECTION,
-                metadata={"db_type": self.db_type}
+                metadata=metadata
             )
         except Exception as e:
             self.last_error = str(e)
@@ -156,19 +306,36 @@ class DatabaseIntrospectionProvider(SchemaProvider):
 
     def _get_postgresql_schema(self) -> Dict[str, TableInfo]:
         """Get PostgreSQL schema"""
+        from psycopg2 import sql
+
         cursor = self.connection.cursor()
-        tables = {}
+        tables: Dict[str, TableInfo] = {}
 
-        # Get all tables
+        include_samples = self.introspection_options.get("include_samples", False)
+        include_row_counts = self.introspection_options.get("include_row_counts", False)
+        sample_rows = self.introspection_options.get("sample_rows", 3)
+        row_count_strategy = self.introspection_options.get("row_count_strategy", "approx")
+        max_tables = self.introspection_options.get("max_tables", 0)
+        max_columns = self.introspection_options.get("max_columns", 0)
+
+        schemas = self._resolve_postgres_schemas(cursor)
+        self.last_schema_list = schemas
+        include_schema_prefix = len(schemas) > 1 or (schemas and schemas[0] != "public") or "*" in schemas
+
         cursor.execute("""
-            SELECT table_name
+            SELECT table_schema, table_name
             FROM information_schema.tables
-            WHERE table_schema = 'public'
+            WHERE table_schema = ANY(%s)
             AND table_type = 'BASE TABLE'
-        """)
-        table_names = [row[0] for row in cursor.fetchall()]
+            ORDER BY table_schema, table_name
+        """, (schemas,))
+        table_rows = cursor.fetchall()
+        if max_tables:
+            table_rows = table_rows[:max_tables]
 
-        for table_name in table_names:
+        for table_schema, table_name in table_rows:
+            table_key = f"{table_schema}.{table_name}" if include_schema_prefix else table_name
+
             # Get columns
             cursor.execute("""
                 SELECT
@@ -183,32 +350,38 @@ class DatabaseIntrospectionProvider(SchemaProvider):
                         WHEN fk.column_name IS NOT NULL THEN true
                         ELSE false
                     END as is_foreign_key,
-                    fk.foreign_table_name || '.' || fk.foreign_column_name as foreign_ref
+                    fk.foreign_table_schema || '.' || fk.foreign_table_name || '.' || fk.foreign_column_name as foreign_ref
                 FROM information_schema.columns c
                 LEFT JOIN (
                     SELECT ku.column_name
                     FROM information_schema.table_constraints tc
                     JOIN information_schema.key_column_usage ku
                         ON tc.constraint_name = ku.constraint_name
-                    WHERE tc.table_name = %s
+                        AND tc.table_schema = ku.table_schema
+                    WHERE tc.table_schema = %s
+                    AND tc.table_name = %s
                     AND tc.constraint_type = 'PRIMARY KEY'
                 ) pk ON c.column_name = pk.column_name
                 LEFT JOIN (
                     SELECT
                         kcu.column_name,
+                        ccu.table_schema as foreign_table_schema,
                         ccu.table_name as foreign_table_name,
                         ccu.column_name as foreign_column_name
                     FROM information_schema.table_constraints tc
                     JOIN information_schema.key_column_usage kcu
                         ON tc.constraint_name = kcu.constraint_name
+                        AND tc.table_schema = kcu.table_schema
                     JOIN information_schema.constraint_column_usage ccu
                         ON tc.constraint_name = ccu.constraint_name
-                    WHERE tc.table_name = %s
+                    WHERE tc.table_schema = %s
+                    AND tc.table_name = %s
                     AND tc.constraint_type = 'FOREIGN KEY'
                 ) fk ON c.column_name = fk.column_name
-                WHERE c.table_name = %s
+                WHERE c.table_schema = %s
+                AND c.table_name = %s
                 ORDER BY c.ordinal_position
-            """, (table_name, table_name, table_name))
+            """, (table_schema, table_name, table_schema, table_name, table_schema, table_name))
 
             columns = []
             for row in cursor.fetchall():
@@ -221,21 +394,44 @@ class DatabaseIntrospectionProvider(SchemaProvider):
                     foreign_key_ref=row[5]
                 ))
 
-            # Get row count
-            cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
-            row_count = cursor.fetchone()[0]
+            if max_columns:
+                columns = columns[:max_columns]
 
-            # Get sample data
-            cursor.execute(f"SELECT * FROM {table_name} LIMIT 3")
-            sample_rows = cursor.fetchall()
-            sample_data = []
-            if sample_rows:
-                col_names = [desc[0] for desc in cursor.description]
-                for row in sample_rows:
-                    sample_data.append(dict(zip(col_names, row)))
+            row_count = None
+            if include_row_counts:
+                if row_count_strategy == "approx":
+                    cursor.execute("""
+                        SELECT COALESCE(reltuples::bigint, 0)
+                        FROM pg_class c
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE n.nspname = %s AND c.relname = %s
+                    """, (table_schema, table_name))
+                    row_count = int(cursor.fetchone()[0] or 0)
+                else:
+                    cursor.execute(
+                        sql.SQL("SELECT COUNT(*) FROM {}.{}").format(
+                            sql.Identifier(table_schema),
+                            sql.Identifier(table_name)
+                        )
+                    )
+                    row_count = int(cursor.fetchone()[0])
 
-            tables[table_name] = TableInfo(
-                name=table_name,
+            sample_data = None
+            if include_samples and sample_rows > 0:
+                cursor.execute(
+                    sql.SQL("SELECT * FROM {}.{} LIMIT %s").format(
+                        sql.Identifier(table_schema),
+                        sql.Identifier(table_name)
+                    ),
+                    (sample_rows,)
+                )
+                sample_rows_data = cursor.fetchall()
+                if sample_rows_data:
+                    col_names = [desc[0] for desc in cursor.description]
+                    sample_data = [dict(zip(col_names, row)) for row in sample_rows_data]
+
+            tables[table_key] = TableInfo(
+                name=table_key,
                 columns=columns,
                 row_count=row_count,
                 sample_data=sample_data
@@ -248,17 +444,37 @@ class DatabaseIntrospectionProvider(SchemaProvider):
         """Get MySQL schema - similar implementation"""
         cursor = self.connection.cursor()
         tables = {}
-        db_name = self.connection_params.get("database")
+        include_samples = self.introspection_options.get("include_samples", False)
+        include_row_counts = self.introspection_options.get("include_row_counts", False)
+        sample_rows = self.introspection_options.get("sample_rows", 3)
+        row_count_strategy = self.introspection_options.get("row_count_strategy", "approx")
+        max_tables = self.introspection_options.get("max_tables", 0)
+        max_columns = self.introspection_options.get("max_columns", 0)
 
-        cursor.execute("""
-            SELECT table_name
+        schemas = self._resolve_mysql_schemas(cursor)
+        self.last_schema_list = schemas
+        if not schemas:
+            cursor.close()
+            return tables
+        include_schema_prefix = len(schemas) > 1 or "*" in schemas
+
+        placeholders = ", ".join(["%s"] * len(schemas))
+        cursor.execute(
+            f"""
+            SELECT table_schema, table_name
             FROM information_schema.tables
-            WHERE table_schema = %s
+            WHERE table_schema IN ({placeholders})
             AND table_type = 'BASE TABLE'
-        """, (db_name,))
-        table_names = [row[0] for row in cursor.fetchall()]
+            ORDER BY table_schema, table_name
+            """,
+            schemas
+        )
+        table_rows = cursor.fetchall()
+        if max_tables:
+            table_rows = table_rows[:max_tables]
 
-        for table_name in table_names:
+        for table_schema, table_name in table_rows:
+            table_key = f"{table_schema}.{table_name}" if include_schema_prefix else table_name
             cursor.execute("""
                 SELECT
                     c.column_name,
@@ -272,7 +488,7 @@ class DatabaseIntrospectionProvider(SchemaProvider):
                         WHEN fk.column_name IS NOT NULL THEN true
                         ELSE false
                     END as is_foreign_key,
-                    CONCAT(fk.referenced_table_name, '.', fk.referenced_column_name) as foreign_ref
+                    CONCAT(fk.referenced_table_schema, '.', fk.referenced_table_name, '.', fk.referenced_column_name) as foreign_ref
                 FROM information_schema.columns c
                 LEFT JOIN (
                     SELECT kcu.column_name
@@ -287,6 +503,7 @@ class DatabaseIntrospectionProvider(SchemaProvider):
                 LEFT JOIN (
                     SELECT
                         kcu.column_name,
+                        kcu.referenced_table_schema,
                         kcu.referenced_table_name,
                         kcu.referenced_column_name
                     FROM information_schema.key_column_usage kcu
@@ -297,7 +514,7 @@ class DatabaseIntrospectionProvider(SchemaProvider):
                 WHERE c.table_schema = %s
                 AND c.table_name = %s
                 ORDER BY c.ordinal_position
-            """, (db_name, table_name, db_name, table_name, db_name, table_name))
+            """, (table_schema, table_name, table_schema, table_name, table_schema, table_name))
 
             columns = []
             for row in cursor.fetchall():
@@ -310,21 +527,38 @@ class DatabaseIntrospectionProvider(SchemaProvider):
                     foreign_key_ref=row[5]
                 ))
 
-            # Get row count
-            cursor.execute(f"SELECT COUNT(*) FROM `{table_name}`")
-            row_count = cursor.fetchone()[0]
+            if max_columns:
+                columns = columns[:max_columns]
 
-            # Get sample data
-            cursor.execute(f"SELECT * FROM `{table_name}` LIMIT 3")
-            sample_rows = cursor.fetchall()
-            sample_data = []
-            if sample_rows:
-                col_names = [desc[0] for desc in cursor.description]
-                for row in sample_rows:
-                    sample_data.append(dict(zip(col_names, row)))
+            row_count = None
+            if include_row_counts:
+                if row_count_strategy == "approx":
+                    cursor.execute("""
+                        SELECT table_rows
+                        FROM information_schema.tables
+                        WHERE table_schema = %s
+                        AND table_name = %s
+                    """, (table_schema, table_name))
+                    row_count = int(cursor.fetchone()[0] or 0)
+                else:
+                    cursor.execute(
+                        f"SELECT COUNT(*) FROM {self._quote_mysql_ident(table_schema)}.{self._quote_mysql_ident(table_name)}"
+                    )
+                    row_count = int(cursor.fetchone()[0])
 
-            tables[table_name] = TableInfo(
-                name=table_name,
+            sample_data = None
+            if include_samples and sample_rows > 0:
+                cursor.execute(
+                    f"SELECT * FROM {self._quote_mysql_ident(table_schema)}.{self._quote_mysql_ident(table_name)} LIMIT %s",
+                    (sample_rows,)
+                )
+                sample_rows_data = cursor.fetchall()
+                if sample_rows_data:
+                    col_names = [desc[0] for desc in cursor.description]
+                    sample_data = [dict(zip(col_names, row)) for row in sample_rows_data]
+
+            tables[table_key] = TableInfo(
+                name=table_key,
                 columns=columns,
                 row_count=row_count,
                 sample_data=sample_data
@@ -336,54 +570,92 @@ class DatabaseIntrospectionProvider(SchemaProvider):
     def _get_clickhouse_schema(self) -> Dict[str, TableInfo]:
         """Get ClickHouse schema - similar implementation"""
         tables = {}
-        db_name = self.connection_params.get("database", "default")
+        include_samples = self.introspection_options.get("include_samples", False)
+        include_row_counts = self.introspection_options.get("include_row_counts", False)
+        sample_rows = self.introspection_options.get("sample_rows", 3)
+        row_count_strategy = self.introspection_options.get("row_count_strategy", "approx")
+        max_tables = self.introspection_options.get("max_tables", 0)
+        max_columns = self.introspection_options.get("max_columns", 0)
 
-        result = self.connection.query(
-            f"SELECT name FROM system.tables WHERE database = '{db_name}'"
-        )
-        table_names = [row[0] for row in result.result_rows]
+        databases = self._resolve_clickhouse_schemas()
+        self.last_schema_list = databases
+        include_schema_prefix = len(databases) > 1 or "*" in databases
 
-        for table_name in table_names:
-            columns_result = self.connection.query(
-                f"""
-                SELECT name, type, is_in_primary_key
-                FROM system.columns
-                WHERE database = '{db_name}'
-                AND table = '{table_name}'
-                ORDER BY position
-                """
+        for db_name in databases:
+            result = self.connection.query(
+                f"SELECT name FROM system.tables WHERE database = '{db_name}'"
             )
+            table_names = [row[0] for row in result.result_rows]
+            if max_tables:
+                table_names = table_names[:max_tables]
 
-            columns = []
-            for row in columns_result.result_rows:
-                columns.append(ColumnInfo(
-                    name=row[0],
-                    data_type=row[1],
-                    is_nullable=True,
-                    is_primary_key=bool(row[2]),
-                    is_foreign_key=False,
-                    foreign_key_ref=None
-                ))
+            for table_name in table_names:
+                columns_result = self.connection.query(
+                    f"""
+                    SELECT name, type, is_in_primary_key
+                    FROM system.columns
+                    WHERE database = '{db_name}'
+                    AND table = '{table_name}'
+                    ORDER BY position
+                    """
+                )
 
-            row_count_result = self.connection.query(
-                f"SELECT COUNT(*) FROM {db_name}.{table_name}"
-            )
-            row_count = row_count_result.result_rows[0][0] if row_count_result.result_rows else 0
+                columns = []
+                for row in columns_result.result_rows:
+                    columns.append(ColumnInfo(
+                        name=row[0],
+                        data_type=row[1],
+                        is_nullable=True,
+                        is_primary_key=bool(row[2]),
+                        is_foreign_key=False,
+                        foreign_key_ref=None
+                    ))
 
-            sample_result = self.connection.query(
-                f"SELECT * FROM {db_name}.{table_name} LIMIT 3"
-            )
-            sample_data = []
-            if sample_result.result_rows:
-                for row in sample_result.result_rows:
-                    sample_data.append(dict(zip(sample_result.column_names, row)))
+                if max_columns:
+                    columns = columns[:max_columns]
 
-            tables[table_name] = TableInfo(
-                name=table_name,
-                columns=columns,
-                row_count=row_count,
-                sample_data=sample_data
-            )
+                row_count = None
+                if include_row_counts:
+                    if row_count_strategy == "approx":
+                        try:
+                            count_result = self.connection.query(
+                                f"""
+                                SELECT total_rows
+                                FROM system.tables
+                                WHERE database = '{db_name}'
+                                AND name = '{table_name}'
+                                """
+                            )
+                            row_count = count_result.result_rows[0][0] if count_result.result_rows else 0
+                        except Exception:
+                            count_result = self.connection.query(
+                                f"SELECT COUNT(*) FROM `{db_name}`.`{table_name}`"
+                            )
+                            row_count = count_result.result_rows[0][0] if count_result.result_rows else 0
+                    else:
+                        count_result = self.connection.query(
+                            f"SELECT COUNT(*) FROM `{db_name}`.`{table_name}`"
+                        )
+                        row_count = count_result.result_rows[0][0] if count_result.result_rows else 0
+
+                sample_data = None
+                if include_samples and sample_rows > 0:
+                    sample_result = self.connection.query(
+                        f"SELECT * FROM `{db_name}`.`{table_name}` LIMIT {sample_rows}"
+                    )
+                    if sample_result.result_rows:
+                        sample_data = [
+                            dict(zip(sample_result.column_names, row))
+                            for row in sample_result.result_rows
+                        ]
+
+                table_key = f"{db_name}.{table_name}" if include_schema_prefix else table_name
+                tables[table_key] = TableInfo(
+                    name=table_key,
+                    columns=columns,
+                    row_count=row_count,
+                    sample_data=sample_data
+                )
 
         return tables
 
@@ -649,7 +921,7 @@ class SchemaManager:
             lines.append(f"\nTable: {table_name}")
             if table_info.description:
                 lines.append(f"  Description: {table_info.description}")
-            if table_info.row_count:
+            if table_info.row_count is not None:
                 lines.append(f"  Rows: {table_info.row_count}")
 
             # Columns
@@ -689,6 +961,10 @@ class SchemaManager:
                     ref_parts = column.foreign_key_ref.split('.')
                     if len(ref_parts) == 2:
                         related_table, related_col = ref_parts
+                        table_relations.append((related_table, f"FK:{column.name}->{related_col}"))
+                    elif len(ref_parts) == 3:
+                        related_table = f"{ref_parts[0]}.{ref_parts[1]}"
+                        related_col = ref_parts[2]
                         table_relations.append((related_table, f"FK:{column.name}->{related_col}"))
 
             if table_relations:

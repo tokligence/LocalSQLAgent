@@ -54,11 +54,15 @@ class LLMConfig:
                 "provider": "ollama",
                 "ollama": {
                     "base_url": "http://localhost:11434",
-                    "model": "qwen2.5-coder:7b"
+                    "model": "qwen2.5-coder:7b",
+                    "temperature": 0.1,
+                    "max_tokens": 500
                 },
                 "openai": {
                     "api_key": os.getenv("OPENAI_API_KEY", ""),
-                    "model": "gpt-3.5-turbo"
+                    "model": "gpt-3.5-turbo",
+                    "temperature": 0.1,
+                    "max_tokens": 500
                 }
             }
 
@@ -67,6 +71,10 @@ class LLMConfig:
         env_ollama_base = os.getenv("OLLAMA_BASE_URL")
         env_ollama_model = os.getenv("OLLAMA_MODEL")
         env_openai_model = os.getenv("OPENAI_MODEL")
+        env_ollama_temp = os.getenv("OLLAMA_TEMPERATURE")
+        env_ollama_max_tokens = os.getenv("OLLAMA_MAX_TOKENS")
+        env_openai_temp = os.getenv("OPENAI_TEMPERATURE")
+        env_openai_max_tokens = os.getenv("OPENAI_MAX_TOKENS")
 
         if env_provider:
             config["provider"] = env_provider
@@ -74,8 +82,36 @@ class LLMConfig:
             config["ollama"]["base_url"] = env_ollama_base
         if env_ollama_model:
             config["ollama"]["model"] = env_ollama_model
+        if env_ollama_temp:
+            try:
+                config["ollama"]["temperature"] = float(env_ollama_temp)
+            except ValueError:
+                pass
+        if env_ollama_max_tokens:
+            try:
+                config["ollama"]["max_tokens"] = int(env_ollama_max_tokens)
+            except ValueError:
+                pass
         if env_openai_model:
             config["openai"]["model"] = env_openai_model
+        if env_openai_temp:
+            try:
+                config["openai"]["temperature"] = float(env_openai_temp)
+            except ValueError:
+                pass
+        if env_openai_max_tokens:
+            try:
+                config["openai"]["max_tokens"] = int(env_openai_max_tokens)
+            except ValueError:
+                pass
+
+        # Ensure defaults exist for optional keys
+        config.setdefault("ollama", {})
+        config.setdefault("openai", {})
+        config["ollama"].setdefault("temperature", 0.1)
+        config["ollama"].setdefault("max_tokens", 500)
+        config["openai"].setdefault("temperature", 0.1)
+        config["openai"].setdefault("max_tokens", 500)
 
         return config
 
@@ -158,8 +194,8 @@ class LLMConfig:
     def call_llm(
         self,
         prompt: str,
-        temperature: float = 0.1,
-        max_tokens: int = 500,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
         model: Optional[str] = None,
         provider: Optional[str] = None
     ) -> str:
@@ -167,9 +203,13 @@ class LLMConfig:
         active_provider = provider or self.get_current_provider()
 
         if active_provider == "ollama":
-            return self._call_ollama(prompt, temperature, max_tokens, model=model)
+            temp = temperature if temperature is not None else self.config["ollama"].get("temperature", 0.1)
+            tokens = max_tokens if max_tokens is not None else self.config["ollama"].get("max_tokens", 500)
+            return self._call_ollama(prompt, temp, tokens, model=model)
         if active_provider == "openai":
-            return self._call_openai(prompt, temperature, max_tokens, model=model)
+            temp = temperature if temperature is not None else self.config["openai"].get("temperature", 0.1)
+            tokens = max_tokens if max_tokens is not None else self.config["openai"].get("max_tokens", 500)
+            return self._call_openai(prompt, temp, tokens, model=model)
         raise ValueError(f"Unknown provider: {active_provider}")
 
     def _call_ollama(self, prompt: str, temperature: float, max_tokens: int, model: Optional[str] = None) -> str:

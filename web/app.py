@@ -328,24 +328,25 @@ if 'db_configs' not in st.session_state:
             'database': 'benchmark',
             'user': 'text2sql',
             'password': 'text2sql123',
+            'schemas': 'public',
             'enabled': True
         },
         'mysql': {
             'type': 'mysql',
             'host': default_db_host,
-            'port': 3306,
+            'port': 3307,
             'database': 'benchmark',
-            'user': 'root',
-            'password': 'mysql123',
+            'user': 'text2sql',
+            'password': 'text2sql123',
             'enabled': False
         },
         'clickhouse': {
             'type': 'clickhouse',
             'host': default_db_host,
             'port': 8123,
-            'database': 'benchmark',
-            'user': 'default',
-            'password': 'clickhouse123',
+            'database': 'default',
+            'user': 'text2sql',
+            'password': 'text2sql123',
             'enabled': False
         }
     }
@@ -364,6 +365,16 @@ if 'execution_policy' not in st.session_state:
         "allow_multi_statement": True,
         "default_limit": 10000,
         "enforce_default_limit": True
+    }
+
+if 'schema_options' not in st.session_state:
+    st.session_state.schema_options = {
+        "include_samples": False,
+        "include_row_counts": False,
+        "sample_rows": 3,
+        "row_count_strategy": "approx",
+        "max_tables": 0,
+        "max_columns": 0
     }
 
 # Example queries
@@ -418,6 +429,7 @@ def call_api(
     query: str,
     db_config: Dict[str, Any],
     execution_policy: Dict[str, Any],
+    schema_options: Optional[Dict[str, Any]] = None,
     query_mode: Optional[str] = None
 ) -> Dict[str, Any]:
     """Call the OpenAI-compatible API server and parse JSON content"""
@@ -429,6 +441,8 @@ def call_api(
         "db_config": db_config,
         "execution_policy": execution_policy
     }
+    if schema_options:
+        payload["schema_options"] = schema_options
     if query_mode:
         payload["query_mode"] = query_mode
 
@@ -705,6 +719,7 @@ def execute_query_improved(query: str, target_dbs: Optional[List[str]] = None):
         "default_limit": 10000,
         "enforce_default_limit": True
     })
+    schema_options = st.session_state.get("schema_options", {})
     query_mode = "explore" if is_explore_query(query) else None
     pending = st.session_state.conversation_state.get("pending_clarifications", {})
 
@@ -728,7 +743,16 @@ def execute_query_improved(query: str, target_dbs: Optional[List[str]] = None):
                 continue
 
             db_connection_config = {k: v for k, v in config.items() if k != "enabled"}
-            response = call_api(query, db_connection_config, execution_policy, query_mode=query_mode)
+            schema_payload = dict(schema_options) if schema_options else {}
+            if config.get("schemas"):
+                schema_payload["schemas"] = config.get("schemas")
+            response = call_api(
+                query,
+                db_connection_config,
+                execution_policy,
+                schema_options=schema_payload if schema_payload else None,
+                query_mode=query_mode
+            )
 
             if response.get("type") == "clarification":
                 clarifications = response.get("clarifications", [])
@@ -824,7 +848,7 @@ def render_sidebar():
                 "Query Targets",
                 enabled_dbs,
                 default=default_selected,
-                format_func=lambda x: x.upper(),
+                format_func=lambda x: f"{x} ({st.session_state.db_configs.get(x, {}).get('type', 'db')})",
                 label_visibility="collapsed"
             )
 
@@ -839,7 +863,10 @@ def render_sidebar():
                 st.session_state.current_db = selected_dbs[0]
                 for db_key in selected_dbs:
                     config = st.session_state.db_configs[db_key]
-                    st.caption(f"📡 {db_key}: {config['host']}:{config['port']}/{config['database']}")
+                    schema_hint = ""
+                    if config.get("schemas"):
+                        schema_hint = f" | schemas: {config.get('schemas')}"
+                    st.caption(f"📡 {db_key}: {config['host']}:{config['port']}/{config['database']}{schema_hint}")
             else:
                 st.warning("Select at least one database to run queries.")
         else:
@@ -905,6 +932,7 @@ def render_sidebar():
                             'database': new_database,
                             'user': new_user,
                             'password': new_password,
+                            'schemas': '',
                             'enabled': False
                         }
                         st.success(f"✅ Added {new_db_name} database!")
@@ -925,6 +953,18 @@ def render_sidebar():
                     config['port'] = st.number_input("Port", value=config['port'], key=f"{selected_db}_port")
                 with col2:
                     config['database'] = st.text_input("Database", value=config['database'], key=f"{selected_db}_database")
+
+                schema_label = "Schemas (comma-separated)"
+                schema_help = "Optional. Use * for all non-system schemas."
+                if config['type'] in ("mysql", "clickhouse"):
+                    schema_label = "Databases (comma-separated)"
+                    schema_help = "Optional. Leave empty to use the database above."
+                config['schemas'] = st.text_input(
+                    schema_label,
+                    value=config.get('schemas', ''),
+                    key=f"{selected_db}_schemas",
+                    help=schema_help
+                )
 
                 col1, col2 = st.columns(2)
                 with col1:
@@ -963,8 +1003,20 @@ def render_sidebar():
                                 )
                                 conn.close()
                                 st.success("✅ Connection successful!")
+                            elif config['type'] == 'clickhouse':
+                                import clickhouse_connect
+                                client = clickhouse_connect.get_client(
+                                    host=config['host'],
+                                    port=config['port'],
+                                    username=config['user'],
+                                    password=config['password'],
+                                    database=config['database']
+                                )
+                                client.query("SELECT 1")
+                                client.close()
+                                st.success("✅ Connection successful!")
                             else:
-                                st.info("ClickHouse connection test not implemented")
+                                st.info("Connection test not implemented for this database type")
                         except Exception as e:
                             st.error(f"❌ Connection failed: {str(e)}")
 
@@ -998,6 +1050,47 @@ def render_sidebar():
                             st.warning(f"⚠️ API server returned {response.status_code}")
                     except Exception as e:
                         st.error(f"❌ API server unreachable: {str(e)}")
+
+        st.markdown("---")
+
+        # Schema discovery options
+        with st.expander("🧭 Schema Discovery"):
+            schema_opts = st.session_state.schema_options
+            schema_opts["include_samples"] = st.checkbox(
+                "Include sample rows in schema",
+                value=schema_opts.get("include_samples", False)
+            )
+            schema_opts["include_row_counts"] = st.checkbox(
+                "Include row counts",
+                value=schema_opts.get("include_row_counts", False)
+            )
+            schema_opts["row_count_strategy"] = st.selectbox(
+                "Row count strategy",
+                ["approx", "exact"],
+                index=0 if schema_opts.get("row_count_strategy", "approx") == "approx" else 1
+            )
+            schema_opts["sample_rows"] = st.number_input(
+                "Sample rows per table",
+                min_value=0,
+                max_value=20,
+                value=int(schema_opts.get("sample_rows", 3)),
+                step=1
+            )
+            schema_opts["max_tables"] = st.number_input(
+                "Max tables to load (0 = no limit)",
+                min_value=0,
+                max_value=5000,
+                value=int(schema_opts.get("max_tables", 0)),
+                step=10
+            )
+            schema_opts["max_columns"] = st.number_input(
+                "Max columns per table (0 = no limit)",
+                min_value=0,
+                max_value=500,
+                value=int(schema_opts.get("max_columns", 0)),
+                step=10
+            )
+            st.session_state.schema_options = schema_opts
 
         st.markdown("---")
 
@@ -1083,10 +1176,30 @@ def render_sidebar():
                     label_visibility="collapsed"
                 )
 
+                col1, col2 = st.columns(2)
+                with col1:
+                    temperature = st.number_input(
+                        "Temperature",
+                        min_value=0.0,
+                        max_value=2.0,
+                        value=float(llm_config.config["ollama"].get("temperature", 0.1)),
+                        step=0.05
+                    )
+                with col2:
+                    max_tokens = st.number_input(
+                        "Max tokens",
+                        min_value=1,
+                        max_value=8192,
+                        value=int(llm_config.config["ollama"].get("max_tokens", 500)),
+                        step=50
+                    )
+
                 if st.button("💾 Save Settings", use_container_width=True):
                     llm_config.config["provider"] = "ollama"
                     llm_config.config["ollama"]["base_url"] = base_url
                     llm_config.config["ollama"]["model"] = selected_model
+                    llm_config.config["ollama"]["temperature"] = float(temperature)
+                    llm_config.config["ollama"]["max_tokens"] = int(max_tokens)
                     if llm_config.save_config(llm_config.config):
                         st.success("✅ Settings saved!")
 

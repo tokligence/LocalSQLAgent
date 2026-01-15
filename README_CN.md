@@ -6,7 +6,7 @@
 [![Powered by Ollama](https://img.shields.io/badge/Powered_by-Ollama-orange)](https://ollama.com)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
-> 🎯 **多次尝试在模拟中可提升准确率（46% → 95%+）** - 真实效果请以你自己的数据/基准测试为准。
+> 🎯 **多次尝试可提升稳定性，但提升幅度因数据而异** — 真实效果请以你的基准测试为准。
 
 [中文文档](README_CN.md) | [English](README.md)
 
@@ -38,7 +38,7 @@
 │                              ▼                         ▼             │
 │                    ┌──────────────────┐     ┌──────────────────┐   │
 │                    │  模糊检测模块     │     │  多次尝试策略     │   │
-│                    │  <15%误报率       │     │  显著提升准确率   │   │
+│                    │  误报率可调       │     │  显著提升准确率   │   │
 │                    └──────────────────┘     └──────────────────┘   │
 │                              │                         │             │
 │                              └────────┬────────────────┘             │
@@ -91,7 +91,7 @@ graph LR
 | 5次 | 85% | 4% | 3.97s | 1.66 |
 | 7次 | 85% | 4% | 4.79s | 1.94 |
 
-**Docker（text2sql2026-api 镜像）**
+**Docker（本地镜像标签 `text2sql2026-api`）**
 | 最大尝试次数 | 执行准确率 | 精确匹配 | 平均耗时 | 平均尝试次数 |
 |-------------|-----------|---------|---------|-------------|
 | 1次 | 84% | 3% | 2.56s | 1.00 |
@@ -109,21 +109,16 @@ python benchmarks/sql_benchmark.py --model ollama --model-name qwen2.5-coder:7b 
 ```
 
 ### ✅ 集成测试（Live Services）
-- `pytest tests/integration/test_schema_discovery_mysql_clickhouse.py tests/integration/test_multi_statement_execution.py -q` → 4 passed
-- 多 schema 检查（PostgreSQL）：创建 `analytics.events` 后，Schema discovery 仍只返回 `public` 表（暂不支持多 schema）
+运行：
+```bash
+pytest tests/integration/test_schema_discovery_mysql_clickhouse.py \
+  tests/integration/test_multi_statement_execution.py \
+  tests/integration/test_multi_schema_postgres.py \
+  tests/integration/test_live_services_smoke.py -q
+```
 
-### SQL数据库性能（单次尝试基准）
-| 模型 | PostgreSQL | MySQL | ClickHouse | 平均准确率 |
-|------|------------|-------|------------|-----------|
-| SQLCoder-7B | 58.3% | 33.3% | 8.3% | 33.3% |
-| DeepSeek-Coder-6.7B | 75.0% | 66.7% | 66.7% | 69.5% |
-| **Qwen2.5-Coder-7B** ✅ | **75.0%** | **75.0%** | **75.0%** | **75.0%** |
-
-### MongoDB NoSQL性能（动态Schema的价值）
-| 方法 | 总体准确率 | 简单查询 | Find查询 | 提升幅度 |
-|------|-----------|---------|----------|----------|
-| 硬编码Schema | 16.7% | 33.3% | 40% | - |
-| **动态Schema发现** ✅ | **41.7%** | **100%** | **80%** | **↑150%** |
+### 多数据库基准（需自行运行）
+PostgreSQL/MySQL/ClickHouse/MongoDB 的准确率受 schema、数据分布与模型版本影响较大。请结合你的数据运行集成测试与基准脚本。
 
 ## 💡 为什么选择本地部署？
 
@@ -240,7 +235,7 @@ text2sql2026/
 
 ### 2. 模糊查询处理
 - **智能识别模糊表达** - "最近"、"热门"等
-- **误报率控制** - 多层验证机制，误报率<15%
+- **误报率控制** - 多层验证机制，需按业务调参
 - **交互式澄清** - 主动询问用户意图
 
 ### 3. 多策略执行
@@ -252,23 +247,28 @@ text2sql2026/
 - **Schema预览** - “Explore the database” 直接展示结构卡片
 - **多库选择** - UI支持一次选多个数据库并对比结果
 - **安全开关** - 默认只读 + LIMIT 防护，可开启DDL/DML
+- **Schema控制** - 可配置样本/行数与schema过滤
+
+### 入口说明
+- `web/api_server.py` — OpenAI兼容API（生产入口）
+- `web/app.py` — Streamlit UI（交互入口）
 
 ### 5. MCP集成（可选）
 - **统一接口** - 支持多数据源
 - **实时Schema更新** - 动态获取最新结构
 - **性能优化** - 缓存和批处理
+- **说明** - MCP服务端不随仓库提供，需自行部署
 
 ## 📈 性能对比
 
-### 关键发现
-1. **Qwen2.5-Coder-7B是最佳选择** - 跨数据库稳定性最好
-2. **动态Schema至关重要** - MongoDB准确率提升150%
-3. **简单查询已可生产使用** - Find查询达80%+准确率
+### 关键发现（以你的基准为准）
+1. **模型选择影响巨大** - 需在你的数据上对比不同模型
+2. **Schema质量是核心前提** - 动态Schema与清晰字段命名显著提升稳定性
+3. **查询明确度决定成功率** - 需要澄清机制或前置约束
 
 ### 改进建议
-- SQL查询：已达生产水平（75%）
-- MongoDB聚合：需要专项优化（当前0%）
-- 复杂查询：建议使用模板+LLM混合方案
+- SQL查询：结合真实业务数据持续回归测试
+- MongoDB/复杂查询：建议引入模板或规则辅助
 
 ## 📚 文档
 
@@ -300,8 +300,12 @@ result = agent.execute_query("找出最近购买的VIP客户")
 # 调整模糊检测阈值
 detector = AmbiguityDetector(confidence_threshold=0.8)
 
-# 使用不同执行策略
-agent.set_strategy(ExecutionStrategy.EXPLORATORY)
+# 使用更多重试次数
+agent = IntelligentSQLAgent(
+    model_name="qwen2.5-coder:7b",
+    db_config={"type": "postgresql", ...},
+    max_attempts=7
+)
 ```
 
 ## 🔧 配置选项
@@ -312,6 +316,8 @@ agent.set_strategy(ExecutionStrategy.EXPLORATORY)
 | `max_attempts` | 5 | 最大重试次数 |
 | `confidence_threshold` | 0.75 | 模糊检测阈值 |
 | `cache_ttl` | 3600 | 缓存过期时间(秒) |
+
+LLM 温度/最大 tokens 可在 `~/.tokligence/llm_config.json` 或环境变量（如 `OLLAMA_TEMPERATURE`）中设置；`schema_options` 可通过 API 或 UI 配置。
 
 ## 🌟 与Ollama生态完美集成
 

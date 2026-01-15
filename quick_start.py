@@ -58,9 +58,9 @@ def main():
 
     print("\n" + "=" * 60)
     print("✨ 项目亮点:")
-    print("• SQL准确率达75% (Qwen2.5-Coder)")
-    print("• MongoDB动态Schema提升150%准确率")
-    print("• 智能模糊检测，误报率<15%")
+    print("• 准确率请以你的基准测试为准（运行 benchmarks/sql_benchmark.py）")
+    print("• 动态Schema与多次尝试可提升稳定性，需结合真实数据验证")
+    print("• 模糊检测与澄清机制可减少歧义，但需按业务调参")
     print("• 支持多数据库 (PostgreSQL/MySQL/ClickHouse/MongoDB)")
     print("=" * 60)
     print("\n🏢 LocalSQLAgent by Tokligence")

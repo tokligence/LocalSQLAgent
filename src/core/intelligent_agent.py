@@ -300,9 +300,37 @@ class IntelligentSQLAgent:
             "allow_admin",
             "allow_multi_statement",
             "default_limit",
-            "enforce_default_limit"
+            "enforce_default_limit",
+            "schema_options",
+            "schema",
+            "schemas",
+            "include_samples",
+            "include_row_counts",
+            "sample_rows",
+            "row_count_strategy",
+            "max_tables",
+            "max_columns",
+            "temperature",
+            "max_tokens"
         }
         connection_params = {k: v for k, v in db_config.items() if k not in excluded_keys}
+
+        introspection_options: Dict[str, Any] = {}
+        if isinstance(db_config, dict):
+            if isinstance(db_config.get("schema_options"), dict):
+                introspection_options.update(db_config.get("schema_options", {}))
+            for key in (
+                "schema",
+                "schemas",
+                "include_samples",
+                "include_row_counts",
+                "sample_rows",
+                "row_count_strategy",
+                "max_tables",
+                "max_columns"
+            ):
+                if key in db_config:
+                    introspection_options[key] = db_config[key]
 
         # Mask password for logging
         safe_params = {k: '***' if k == 'password' else v for k, v in connection_params.items()}
@@ -311,7 +339,8 @@ class IntelligentSQLAgent:
         try:
             provider = DatabaseIntrospectionProvider(
                 self.db_type,
-                connection_params
+                connection_params,
+                introspection_options=introspection_options
             )
             providers.append(provider)
             self.logger.info("DatabaseIntrospectionProvider created successfully")
@@ -333,6 +362,21 @@ class IntelligentSQLAgent:
         self.query_cache = {}
         self.schema_cache = None
         self.max_cache_size = 100  # Limit cache to 100 queries
+        self.llm_temperature = None
+        self.llm_max_tokens = None
+        if isinstance(db_config, dict):
+            for key in ("temperature", "llm_temperature"):
+                if key in db_config:
+                    try:
+                        self.llm_temperature = float(db_config[key])
+                    except Exception:
+                        pass
+            for key in ("max_tokens", "llm_max_tokens"):
+                if key in db_config:
+                    try:
+                        self.llm_max_tokens = int(db_config[key])
+                    except Exception:
+                        pass
 
     def execute_query(self, query: str, force_refresh: bool = False) -> ExecutionResult:
         """
@@ -384,6 +428,7 @@ class IntelligentSQLAgent:
 
             # 5. Execute with selected strategy
             result = self._execute_with_strategy(context)
+            result = self._attempt_fallback(context, result)
 
             # 6. Cache successful results (with size limit)
             if result.success and result.confidence > 0.7:
@@ -503,24 +548,73 @@ class IntelligentSQLAgent:
             return "ClickHouse"
         return self.db_type
 
+    def _normalize_clickhouse_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        normalized = dict(params)
+        if "user" in normalized and "username" not in normalized:
+            normalized["username"] = normalized.pop("user")
+        if "database" not in normalized:
+            normalized["database"] = "default"
+        return normalized
+
     def _get_exploration_examples(self) -> List[str]:
         """Dialect-aware exploration examples"""
+        def normalize_schema_list(raw) -> List[str]:
+            if raw is None:
+                return []
+            if isinstance(raw, str):
+                value = raw.strip()
+                if not value:
+                    return []
+                if value in ("*", "all"):
+                    return []
+                return [item.strip() for item in value.split(",") if item.strip()]
+            if isinstance(raw, (list, tuple, set)):
+                return [str(item).strip() for item in raw if str(item).strip()]
+            return []
+
         if self.db_type == "mysql":
+            schemas = normalize_schema_list(self.db_config.get("schemas") or self.db_config.get("schema"))
             db_name = self.db_config.get("database", "")
+            if not schemas:
+                schemas = [db_name] if db_name else []
+            if schemas:
+                if len(schemas) == 1:
+                    schema_filter = f"table_schema = '{schemas[0]}'"
+                else:
+                    in_list = ", ".join([f"'{s}'" for s in schemas])
+                    schema_filter = f"table_schema IN ({in_list})"
+            else:
+                schema_filter = "table_schema = DATABASE()"
             return [
-                f"SELECT table_name, table_type FROM information_schema.tables WHERE table_schema = '{db_name}'",
+                f"SELECT table_name, table_type FROM information_schema.tables WHERE {schema_filter}",
                 f"SELECT 'table_name' AS table_name, COUNT(*) AS row_count FROM table_name",
                 "SELECT * FROM table_name LIMIT 5"
             ]
         if self.db_type == "clickhouse":
+            databases = normalize_schema_list(self.db_config.get("schemas") or self.db_config.get("schema"))
             db_name = self.db_config.get("database", "default")
+            if not databases:
+                databases = [db_name]
+            if len(databases) == 1:
+                db_filter = f"database = '{databases[0]}'"
+            else:
+                in_list = ", ".join([f"'{s}'" for s in databases])
+                db_filter = f"database IN ({in_list})"
             return [
-                f"SELECT name, engine FROM system.tables WHERE database = '{db_name}'",
-                f"SELECT 'table_name' AS table_name, COUNT(*) AS row_count FROM {db_name}.table_name",
+                f"SELECT name, engine FROM system.tables WHERE {db_filter}",
+                f"SELECT 'table_name' AS table_name, COUNT(*) AS row_count FROM {databases[0]}.table_name",
                 "SELECT * FROM table_name LIMIT 5"
             ]
+        schemas = normalize_schema_list(self.db_config.get("schemas") or self.db_config.get("schema"))
+        if not schemas:
+            schemas = ["public"]
+        if len(schemas) == 1:
+            schema_filter = f"table_schema = '{schemas[0]}'"
+        else:
+            in_list = ", ".join([f"'{s}'" for s in schemas])
+            schema_filter = f"table_schema IN ({in_list})"
         return [
-            "SELECT table_name, table_type FROM information_schema.tables WHERE table_schema = 'public'",
+            f"SELECT table_name, table_type FROM information_schema.tables WHERE {schema_filter}",
             "SELECT 'table_name' AS table_name, COUNT(*) AS row_count FROM table_name",
             "SELECT * FROM table_name LIMIT 5"
         ]
@@ -634,6 +728,37 @@ class IntelligentSQLAgent:
                 context=context
             )
 
+    def _attempt_fallback(self, context: QueryContext, result: ExecutionResult) -> ExecutionResult:
+        """Fallback to stronger strategies when initial execution fails."""
+        if result.success:
+            return result
+        if result.error == "Clarification needed":
+            return result
+
+        policy_blockers = (
+            "Read-only mode",
+            "statements are disabled",
+            "Multiple SQL statements are not allowed"
+        )
+        if result.error and any(blocker in str(result.error) for blocker in policy_blockers):
+            return result
+
+        if context.selected_strategy == ExecutionStrategy.DIRECT:
+            fallback_strategies = [ExecutionStrategy.VALIDATED, ExecutionStrategy.EXPLORATORY]
+        elif context.selected_strategy == ExecutionStrategy.VALIDATED:
+            fallback_strategies = [ExecutionStrategy.EXPLORATORY]
+        else:
+            return result
+
+        last_result = result
+        for strategy in fallback_strategies:
+            context.selected_strategy = strategy
+            last_result = self._execute_with_strategy(context)
+            if last_result.success or last_result.error == "Clarification needed":
+                return last_result
+
+        return last_result
+
     def _execute_direct(self, context: QueryContext) -> ExecutionResult:
         """Direct single-attempt execution with clarification handling"""
         sql = self._generate_sql(
@@ -665,6 +790,13 @@ class IntelligentSQLAgent:
             )
 
         success, result = self._execute_sql(sql)
+        context.attempts.append({
+            "strategy": "validated",
+            "sql": sql,
+            "success": success,
+            "result": result if success else None,
+            "error": result if not success else None
+        })
 
         context.attempts.append({
             "strategy": "direct",
@@ -690,6 +822,7 @@ class IntelligentSQLAgent:
         else:
             return ExecutionResult(
                 success=False,
+                sql=sql,
                 error=result,
                 attempts_count=1,
                 strategy_used=ExecutionStrategy.DIRECT,
@@ -748,6 +881,7 @@ class IntelligentSQLAgent:
         else:
             return ExecutionResult(
                 success=False,
+                sql=sql,
                 error=result,
                 attempts_count=len(validations) + 1,
                 strategy_used=ExecutionStrategy.VALIDATED,
@@ -939,8 +1073,8 @@ Generate your response:
                 model_override = self.model_name
             return llm_config.call_llm(
                 prompt,
-                temperature=0.1,
-                max_tokens=500,
+                temperature=self.llm_temperature,
+                max_tokens=self.llm_max_tokens,
                 model=model_override,
                 provider=provider_override
             )
@@ -961,7 +1095,7 @@ Generate your response:
         tables_with_data = []
 
         for table_name, table_info in schema.tables.items():
-            if hasattr(table_info, 'row_count') and table_info.row_count:
+            if hasattr(table_info, 'row_count') and table_info.row_count is not None:
                 total_rows += table_info.row_count
                 tables_with_data.append((table_name, table_info.row_count))
 
@@ -1020,8 +1154,9 @@ Generate your response:
         if schema and schema.tables:
             # Prefer common table names
             for name in ["users", "customers", "orders", "products"]:
-                if name in schema.tables:
-                    return name
+                for table in schema.tables:
+                    if table == name or table.endswith(f".{name}"):
+                        return table
             # Return the first table
             return list(schema.tables.keys())[0]
         return "users"  # default
@@ -1385,6 +1520,7 @@ Corrected SQL Query (no explanations):"""
 
             if self.db_type == 'clickhouse':
                 conn_params = {k: v for k, v in self.db_config.items() if k != 'type'}
+                conn_params = self._normalize_clickhouse_params(conn_params)
                 client = clickhouse_connect.get_client(**conn_params)
                 results = []
                 total_rows = 0

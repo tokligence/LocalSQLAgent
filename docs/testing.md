@@ -54,6 +54,9 @@ export CLICKHOUSE_PORT=8123
 export CLICKHOUSE_USER=text2sql
 export CLICKHOUSE_PASSWORD=text2sql123
 export CLICKHOUSE_DATABASE=default
+
+export API_BASE_URL=http://localhost:8711
+export WEB_UI_URL=http://localhost:8501
 ```
 
 Then run:

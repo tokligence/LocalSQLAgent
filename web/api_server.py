@@ -91,6 +91,10 @@ def chat_completions():
         # Extract database configuration from messages or use default
         db_config = extract_db_config(messages, data)
         execution_policy = extract_execution_policy(data)
+        schema_options = extract_schema_options(data)
+        if schema_options:
+            db_config = dict(db_config)
+            db_config["schema_options"] = schema_options
 
         # Get or create agent
         agent_key = (
@@ -120,7 +124,7 @@ def chat_completions():
 
         # Generate response
         if query_mode == "explore":
-            content = build_schema_content(agent)
+            content = build_schema_content(agent, schema_options)
             if stream:
                 return stream_content_response(content, model)
             return build_openai_response(content, model, query)
@@ -273,10 +277,21 @@ def normal_response(agent: IntelligentSQLAgent, query: str, model: str) -> Respo
     return build_openai_response(content, model, query)
 
 
-def build_schema_content(agent: IntelligentSQLAgent) -> str:
+def build_schema_content(agent: IntelligentSQLAgent, schema_options: Optional[Dict[str, Any]] = None) -> str:
     """Build schema overview payload as JSON string."""
+    options = schema_options or {}
+    include_samples = bool(options.get("include_samples", False))
+    max_samples = options.get("sample_rows", 3)
     try:
-        overview = agent.get_schema_overview()
+        max_samples = int(max_samples)
+    except Exception:
+        max_samples = 3
+
+    try:
+        overview = agent.get_schema_overview(
+            include_samples=include_samples,
+            max_samples_per_table=max_samples
+        )
         payload = {
             "type": "schema_overview",
             "success": True,
@@ -306,21 +321,27 @@ def stream_response(agent: IntelligentSQLAgent, query: str, model: str) -> Respo
 
 def stream_content_response(content: str, model: str) -> Response:
     """Stream a pre-built content payload."""
+    def chunk_text(text: str, size: int = 1200) -> List[str]:
+        return [text[i:i + size] for i in range(0, len(text), size)] or [""]
+
     def generate():
-        chunk = {
-            "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
-            "object": "chat.completion.chunk",
-            "created": int(time.time()),
-            "model": model,
-            "choices": [{
-                "index": 0,
-                "delta": {
-                    "content": content
-                },
-                "finish_reason": "stop"
-            }]
-        }
-        yield f"data: {json.dumps(chunk)}\n\n"
+        chunks = chunk_text(content)
+        for idx, text_chunk in enumerate(chunks):
+            finish_reason = "stop" if idx == len(chunks) - 1 else None
+            chunk = {
+                "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
+                "object": "chat.completion.chunk",
+                "created": int(time.time()),
+                "model": model,
+                "choices": [{
+                    "index": 0,
+                    "delta": {
+                        "content": text_chunk
+                    },
+                    "finish_reason": finish_reason
+                }]
+            }
+            yield f"data: {json.dumps(chunk)}\n\n"
         yield "data: [DONE]\n\n"
 
     return Response(generate(), mimetype='text/event-stream')
@@ -344,6 +365,30 @@ def extract_execution_policy(data: Dict) -> Dict:
         if key in data:
             policy[key] = data[key]
     return policy
+
+
+def extract_schema_options(data: Dict) -> Dict:
+    """Extract schema discovery options from request data."""
+    options: Dict[str, Any] = {}
+    if not isinstance(data, dict):
+        return options
+
+    if isinstance(data.get("schema_options"), dict):
+        options.update(data["schema_options"])
+
+    for key in (
+        "schema",
+        "schemas",
+        "include_samples",
+        "include_row_counts",
+        "sample_rows",
+        "row_count_strategy",
+        "max_tables",
+        "max_columns"
+    ):
+        if key in data:
+            options[key] = data[key]
+    return options
 
 
 def build_response_content(result) -> str:

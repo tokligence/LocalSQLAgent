@@ -7,9 +7,9 @@
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![By Tokligence](https://img.shields.io/badge/By-Tokligence-4CAF50)](https://github.com/tokligence)
 
-> 🎯 **Multi-attempt retry lifts accuracy in simulation (46% → 95%+)** - run benchmarks on your data for real-world numbers.
+> 🎯 **Multi-attempt can improve robustness, but gains vary** — see the real benchmark results below.
 >
-> 🌐 **Full bilingual support (English & Chinese)** - 80%+ accuracy in ambiguity detection for both languages!
+> 🌐 **Bilingual (English/Chinese) prompts supported** — accuracy depends on your data and schema quality.
 
 English | [中文文档](README_CN.md)
 
@@ -62,7 +62,7 @@ Dataset: Spider dev (first 100 samples). Model: `qwen2.5-coder:7b` (Ollama). Sto
 | 5 | 85% | 4% | 3.97s | 1.66 |
 | 7 | 85% | 4% | 4.79s | 1.94 |
 
-**Docker (text2sql2026-api image)**
+**Docker (local image tag `text2sql2026-api`)**
 | Max Attempts | Exec Accuracy | Exact Match | Avg Latency | Avg Attempts |
 |--------------|---------------|-------------|-------------|--------------|
 | 1 | 84% | 3% | 2.56s | 1.00 |
@@ -79,22 +79,17 @@ python benchmarks/sql_benchmark.py --model ollama --model-name qwen2.5-coder:7b 
   --benchmark spider --limit 100 --max-attempts 5 --temperature 0.2
 ```
 
-### ✅ Integration Test Results (Live Services)
-- `pytest tests/integration/test_schema_discovery_mysql_clickhouse.py tests/integration/test_multi_statement_execution.py -q` → 4 passed
-- Multi-schema check (PostgreSQL): created `analytics.events` but schema discovery returned only `public` tables (multi-schema discovery not supported yet)
+### ✅ Integration Tests (Live Services)
+Run:
+```bash
+pytest tests/integration/test_schema_discovery_mysql_clickhouse.py \
+  tests/integration/test_multi_statement_execution.py \
+  tests/integration/test_multi_schema_postgres.py \
+  tests/integration/test_live_services_smoke.py -q
+```
 
-### SQL Database Performance (Single Attempt Baseline)
-| Model | PostgreSQL | MySQL | ClickHouse | Average |
-|-------|------------|-------|------------|---------|
-| SQLCoder-7B | 58.3% | 33.3% | 8.3% | 33.3% |
-| DeepSeek-Coder-6.7B | 75.0% | 66.7% | 66.7% | 69.5% |
-| **Qwen2.5-Coder-7B** ✅ | **75.0%** | **75.0%** | **75.0%** | **75.0%** |
-
-### MongoDB NoSQL Performance (Value of Dynamic Schema)
-| Method | Overall | Simple Queries | Find Operations | Improvement |
-|--------|---------|---------------|-----------------|-------------|
-| Hardcoded Schema | 16.7% | 33.3% | 40% | - |
-| **Dynamic Schema** ✅ | **41.7%** | **100%** | **80%** | **↑150%** |
+### Baselines On Your Data
+For multi-db baselines (PostgreSQL/MySQL/ClickHouse/MongoDB), run the live integration tests and your own benchmark suite. Results vary significantly by schema quality, data distribution, and model choice.
 
 ## 💡 Why Choose Local Deployment?
 
@@ -291,8 +286,13 @@ python quick_start.py
 - **🧭 Schema Overview** - "Explore the database" shows live schema cards
 - **🧩 Multi-DB Routing** - Select multiple databases and compare answers
 - **🛡️ Safety Rails** - Read-only default, configurable DDL/DML, LIMIT guardrails
+- **🧭 Schema Controls** - Toggle samples/row counts and filter schemas
 
 Launch with: `make web-ui` or `streamlit run web/app.py`
+
+### Entrypoints
+- `web/api_server.py` — OpenAI-compatible API server (production)
+- `web/app.py` — Streamlit UI for interactive use
 
 ### OpenAI-Compatible API Server
 ```python
@@ -336,6 +336,11 @@ payload = {
         "read_only": True,
         "default_limit": 10000
     },
+    "schema_options": {
+        "schemas": "public",
+        "include_samples": False,
+        "include_row_counts": False
+    },
     "messages": [
         {"role": "user", "content": "Find top customers by revenue"}
     ]
@@ -344,6 +349,8 @@ payload = {
 response = requests.post("http://localhost:8711/v1/chat/completions", json=payload)
 print(response.json()["choices"][0]["message"]["content"])
 ```
+
+LLM settings can be set in `~/.tokligence/llm_config.json` (or env vars like `OLLAMA_TEMPERATURE`) and optionally overridden per request via `db_config` keys like `temperature` and `max_tokens`.
 
 ## 🎯 Key Features
 
@@ -354,7 +361,7 @@ print(response.json()["choices"][0]["message"]["content"])
 
 ### 2. Ambiguity Detection
 - **Intelligent ambiguous expression detection** - "recent", "popular", etc.
-- **False positive control** - Multi-layer validation, <15% false positive rate
+- **False positive control** - Multi-layer validation; tune thresholds for your data
 - **Interactive clarification** - Proactively asks for user intent
 
 ### 3. Multi-Strategy Execution
@@ -438,8 +445,12 @@ result = agent.execute_query("Find VIP customers with recent purchases")
 # Adjust ambiguity detection threshold
 detector = AmbiguityDetector(confidence_threshold=0.8)
 
-# Use different execution strategies
-agent.set_strategy(ExecutionStrategy.EXPLORATORY)
+# Use more retries for hard queries
+agent = IntelligentSQLAgent(
+    model_name="qwen2.5-coder:7b",
+    db_config={"type": "postgresql", ...},
+    max_attempts=7
+)
 ```
 
 ## 🌟 Perfect Integration with Ollama Ecosystem
