@@ -5,7 +5,11 @@
 
 # Default target
 help:
-	@echo "LocalSQLAgent - Local Text-to-SQL Agent System"
+	@echo "╔══════════════════════════════════════════════════════════════╗"
+	@echo "║          LocalSQLAgent - Local Text-to-SQL Agent              ║"
+	@echo "║                  by Tokligence Organization                   ║"
+	@echo "║            https://github.com/tokligence/LocalSQLAgent        ║"
+	@echo "╚══════════════════════════════════════════════════════════════╝"
 	@echo ""
 	@echo "Available commands:"
 	@echo "  make install        - Install Python dependencies"
@@ -64,6 +68,10 @@ start: setup-ollama setup-db
 	@echo "  ClickHouse: localhost:8123"
 	@echo ""
 	@echo "Run 'make quick-start' to try it out!"
+	@echo ""
+	@echo "───────────────────────────────────────────────────────────────"
+	@echo "   LocalSQLAgent by Tokligence | github.com/tokligence"
+	@echo "───────────────────────────────────────────────────────────────"
 
 # Stop all services
 stop:

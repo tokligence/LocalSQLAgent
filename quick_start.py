@@ -12,7 +12,8 @@ from src.core.ambiguity_detection import AmbiguityDetector
 
 def main():
     print("=" * 60)
-    print("🚀 Text2SQL 快速体验")
+    print("🚀 LocalSQLAgent Quick Start")
+    print("   by Tokligence - github.com/tokligence")
     print("=" * 60)
 
     # 演示模糊检测功能
@@ -62,6 +63,8 @@ def main():
     print("• 智能模糊检测，误报率<15%")
     print("• 支持多数据库 (PostgreSQL/MySQL/ClickHouse/MongoDB)")
     print("=" * 60)
+    print("\n🏢 LocalSQLAgent by Tokligence")
+    print("   Learn more: github.com/tokligence/LocalSQLAgent")
 
 
 if __name__ == "__main__":

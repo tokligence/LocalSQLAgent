@@ -1,8 +1,8 @@
 # 🚀 LocalSQLAgent - 本地化智能Text-to-SQL代理系统
 
-[![100% Local](https://img.shields.io/badge/Deployment-100%25_Local-success)](https://github.com/pkusnail/LocalSQLAgent)
-[![Zero API Cost](https://img.shields.io/badge/API_Cost-$0-green)](https://github.com/pkusnail/LocalSQLAgent)
-[![Model Size](https://img.shields.io/badge/Model-7B-blue)](https://github.com/pkusnail/LocalSQLAgent)
+[![100% Local](https://img.shields.io/badge/Deployment-100%25_Local-success)](https://github.com/tokligence/LocalSQLAgent)
+[![Zero API Cost](https://img.shields.io/badge/API_Cost-$0-green)](https://github.com/tokligence/LocalSQLAgent)
+[![Model Size](https://img.shields.io/badge/Model-7B-blue)](https://github.com/tokligence/LocalSQLAgent)
 [![Powered by Ollama](https://img.shields.io/badge/Powered_by-Ollama-orange)](https://ollama.com)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
@@ -125,7 +125,7 @@ graph LR
 ### ⚡ 使用Makefile一键启动（推荐）
 ```bash
 # 1. 克隆项目
-git clone https://github.com/pkusnail/LocalSQLAgent.git
+git clone https://github.com/tokligence/LocalSQLAgent.git
 cd LocalSQLAgent
 
 # 2. 一键安装和启动
@@ -332,6 +332,13 @@ MIT License - 详见 [LICENSE](LICENSE)
 
 ---
 
+<div align="center">
+
+### 🏢 由 [Tokligence](https://github.com/tokligence) 开发
+*为本地AI生态系统构建智能工具*
+
 🌟 **如果这个项目对你有帮助，请给我们一个Star！**
+
+</div>
 
 **标签**: #text-to-sql #ollama #local-llm #qwen-coder #zero-cost #privacy-first #sql-agent #mongodb

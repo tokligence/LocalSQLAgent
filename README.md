@@ -1,8 +1,8 @@
 # 🚀 LocalSQLAgent - Local Text-to-SQL Agent System
 
-[![100% Local](https://img.shields.io/badge/Deployment-100%25_Local-success)](https://github.com/pkusnail/LocalSQLAgent)
-[![Zero API Cost](https://img.shields.io/badge/API_Cost-$0-green)](https://github.com/pkusnail/LocalSQLAgent)
-[![Model Size](https://img.shields.io/badge/Model-7B-blue)](https://github.com/pkusnail/LocalSQLAgent)
+[![100% Local](https://img.shields.io/badge/Deployment-100%25_Local-success)](https://github.com/tokligence/LocalSQLAgent)
+[![Zero API Cost](https://img.shields.io/badge/API_Cost-$0-green)](https://github.com/tokligence/LocalSQLAgent)
+[![Model Size](https://img.shields.io/badge/Model-7B-blue)](https://github.com/tokligence/LocalSQLAgent)
 [![Powered by Ollama](https://img.shields.io/badge/Powered_by-Ollama-orange)](https://ollama.com)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
@@ -86,7 +86,7 @@ Concurrent Support: 10+ QPS
 ### ⚡ One-Click Setup with Makefile (Recommended)
 ```bash
 # 1. Clone the repository
-git clone https://github.com/pkusnail/LocalSQLAgent.git
+git clone https://github.com/tokligence/LocalSQLAgent.git
 cd LocalSQLAgent
 
 # 2. One-click install and start
@@ -234,6 +234,13 @@ MIT License - See [LICENSE](LICENSE) for details
 
 ---
 
+<div align="center">
+
+### 🏢 Developed by [Tokligence](https://github.com/tokligence)
+*Building intelligent tools for the local AI ecosystem*
+
 🌟 **If this project helps you, please give us a Star!**
+
+</div>
 
 **Tags**: #text-to-sql #ollama #local-llm #qwen-coder #zero-cost #privacy-first #sql-agent #mongodb
