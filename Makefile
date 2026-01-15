@@ -116,10 +116,10 @@ web-ui: install
 	@echo ""
 	@if [ -d "venv" ]; then \
 		./venv/bin/pip install streamlit flask flask-cors pymongo 2>/dev/null || true; \
-		./venv/bin/streamlit run web/app.py; \
+		./venv/bin/streamlit run web/app.py --server.address=0.0.0.0 --server.port=8501 --server.headless=true --browser.gatherUsageStats=false; \
 	else \
 		pip install streamlit flask flask-cors pymongo 2>/dev/null || true; \
-		streamlit run web/app.py; \
+		streamlit run web/app.py --server.address=0.0.0.0 --server.port=8501 --server.headless=true --browser.gatherUsageStats=false; \
 	fi
 
 # Start API Server

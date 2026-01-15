@@ -96,28 +96,28 @@ st.markdown("""
 if 'db_configs' not in st.session_state:
     st.session_state.db_configs = {
         'postgresql': {
-            'enabled': False,
+            'enabled': True,  # Default enabled
             'host': 'localhost',
             'port': 5432,
-            'database': 'test',
-            'user': 'postgres',
-            'password': ''
+            'database': 'benchmark',
+            'user': 'text2sql',
+            'password': 'text2sql123'
         },
         'mysql': {
-            'enabled': False,
+            'enabled': True,  # Default enabled
             'host': 'localhost',
-            'port': 3306,
-            'database': 'test',
-            'user': 'root',
-            'password': ''
+            'port': 3307,  # Using port 3307 to avoid conflicts
+            'database': 'benchmark',
+            'user': 'text2sql',
+            'password': 'text2sql123'
         },
         'mongodb': {
             'enabled': False,
             'host': 'localhost',
             'port': 27017,
-            'database': 'test',
-            'user': '',
-            'password': ''
+            'database': 'benchmark',
+            'user': 'text2sql',
+            'password': 'text2sql123'
         }
     }
 
@@ -238,7 +238,7 @@ def render_sidebar():
 
 def render_query_interface():
     """Render the main query interface"""
-    st.title("🎯 Tokligence Tokligence LocalSQLAgent")
+    st.title("🎯 Tokligence LocalSQLAgent")
     st.markdown("### Intelligent Text-to-SQL Query Interface")
     st.markdown("Convert natural language to SQL queries with intelligent multi-attempt strategy")
 
