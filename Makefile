@@ -18,7 +18,7 @@ help:
 	@echo "  make start          - Start everything (Ollama + DBs)"
 	@echo "  make stop           - Stop all services"
 	@echo "  make web-ui         - Launch interactive Web UI (port 8501)"
-	@echo "  make api-server     - Start OpenAI-compatible API (port 8000)"
+	@echo "  make api-server     - Start OpenAI-compatible API (port 8711)"
 	@echo "  make test           - Run all tests"
 	@echo "  make quick-start    - Run quick start demo"
 	@echo "  make benchmark      - Run full benchmark tests"
@@ -97,7 +97,7 @@ web-ui: install
 # Start API Server
 api-server: install
 	@echo "🔌 Starting OpenAI-Compatible API Server..."
-	@echo "📍 API endpoint: http://localhost:8000"
+	@echo "📍 API endpoint: http://localhost:8711"
 	@echo ""
 	@pip install flask flask-cors 2>/dev/null || true
 	python web/api_server.py

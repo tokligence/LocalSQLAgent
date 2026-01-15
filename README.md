@@ -136,7 +136,7 @@ make quick-start  # Run demo
 make web-ui       # Start interactive web interface at http://localhost:8501
 
 # 4. Start API Server (OpenAI-compatible)
-make api-server   # Start API server at http://localhost:8000
+make api-server   # Start API server at http://localhost:8711
 
 # Other useful commands
 make help         # Show all available commands
@@ -179,7 +179,7 @@ Launch with: `make web-ui` or `streamlit run web/app.py`
 from openai import OpenAI
 
 client = OpenAI(
-    base_url="http://localhost:8000/v1",
+    base_url="http://localhost:8711/v1",
     api_key="not-needed"  # No API key required!
 )
 
