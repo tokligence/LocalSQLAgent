@@ -1,0 +1,526 @@
+{
+  "database": "benchmark",
+  "collections": {
+    "products": {
+      "collection": "products",
+      "document_count": 8,
+      "sample_size": 8,
+      "indexes": [
+        {
+          "name": "_id_",
+          "keys": [
+            "_id"
+          ],
+          "unique": false,
+          "sparse": false
+        },
+        {
+          "name": "category_1",
+          "keys": [
+            "category"
+          ],
+          "unique": false,
+          "sparse": false
+        }
+      ],
+      "fields": {
+        "_id": {
+          "type": "integer",
+          "types_distribution": {
+            "integer": 8
+          },
+          "nullable": false,
+          "meaning": "主键ID",
+          "sample_values": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "unique_count": 8
+        },
+        "name": {
+          "type": "string",
+          "types_distribution": {
+            "string": 8
+          },
+          "nullable": false,
+          "meaning": "名称",
+          "sample_values": [
+            "Laptop Pro",
+            "Wireless Mouse",
+            "Office Chair",
+            "Standing Desk",
+            "Monitor 27\""
+          ],
+          "unique_count": 8
+        },
+        "category": {
+          "type": "string",
+          "types_distribution": {
+            "string": 8
+          },
+          "nullable": false,
+          "meaning": "分类",
+          "sample_values": [
+            "Electronics",
+            "Furniture"
+          ],
+          "unique_count": 2
+        },
+        "price": {
+          "type": "double",
+          "types_distribution": {
+            "double": 8
+          },
+          "nullable": false,
+          "meaning": "价格",
+          "sample_values": [
+            1299.99,
+            29.99,
+            249.99,
+            599.99,
+            399.99
+          ],
+          "unique_count": 8
+        },
+        "stock": {
+          "type": "integer",
+          "types_distribution": {
+            "integer": 8
+          },
+          "nullable": false,
+          "meaning": "库存",
+          "sample_values": [
+            50,
+            200,
+            30,
+            15,
+            75
+          ],
+          "unique_count": 8
+        }
+      }
+    },
+    "orders": {
+      "collection": "orders",
+      "document_count": 10,
+      "sample_size": 10,
+      "indexes": [
+        {
+          "name": "_id_",
+          "keys": [
+            "_id"
+          ],
+          "unique": false,
+          "sparse": false
+        },
+        {
+          "name": "user_id_1",
+          "keys": [
+            "user_id"
+          ],
+          "unique": false,
+          "sparse": false
+        },
+        {
+          "name": "created_at_-1",
+          "keys": [
+            "created_at"
+          ],
+          "unique": false,
+          "sparse": false
+        }
+      ],
+      "fields": {
+        "_id": {
+          "type": "integer",
+          "types_distribution": {
+            "integer": 10
+          },
+          "nullable": false,
+          "meaning": "主键ID",
+          "sample_values": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "unique_count": 10
+        },
+        "user_id": {
+          "type": "integer",
+          "types_distribution": {
+            "integer": 10
+          },
+          "nullable": false,
+          "meaning": "用户ID",
+          "sample_values": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "unique_count": 6
+        },
+        "amount": {
+          "type": "double",
+          "types_distribution": {
+            "double": 10
+          },
+          "nullable": false,
+          "meaning": "金额/数量",
+          "sample_values": [
+            1329.98,
+            599.99,
+            89.99,
+            249.99,
+            1699.98
+          ],
+          "unique_count": 10
+        },
+        "status": {
+          "type": "string",
+          "types_distribution": {
+            "string": 10
+          },
+          "nullable": false,
+          "meaning": "状态",
+          "sample_values": [
+            "completed",
+            "pending",
+            "shipped",
+            "cancelled"
+          ],
+          "unique_count": 4
+        },
+        "items": {
+          "type": "array<object>",
+          "types_distribution": {
+            "array<object>": 10
+          },
+          "nullable": false,
+          "meaning": "条目/项目列表",
+          "sample_values": [
+            [
+              {
+                "product_id": 1,
+                "quantity": 1
+              },
+              {
+                "product_id": 2,
+                "quantity": 1
+              }
+            ],
+            [
+              {
+                "product_id": 4,
+                "quantity": 1
+              }
+            ],
+            [
+              {
+                "product_id": 6,
+                "quantity": 1
+              }
+            ],
+            [
+              {
+                "product_id": 3,
+                "quantity": 1
+              }
+            ],
+            [
+              {
+                "product_id": 1,
+                "quantity": 1
+              },
+              {
+                "product_id": 5,
+                "quantity": 1
+              }
+            ]
+          ],
+          "unique_count": 10,
+          "element_types": [
+            "object"
+          ]
+        },
+        "items[].product_id": {
+          "type": "integer",
+          "types_distribution": {
+            "integer": 14
+          },
+          "nullable": false,
+          "meaning": "主键ID",
+          "sample_values": [
+            1,
+            2,
+            4,
+            6,
+            3
+          ],
+          "unique_count": 8
+        },
+        "items[].quantity": {
+          "type": "integer",
+          "types_distribution": {
+            "integer": 14
+          },
+          "nullable": false,
+          "meaning": "数量",
+          "sample_values": [
+            1
+          ],
+          "unique_count": 2
+        },
+        "created_at": {
+          "type": "date",
+          "types_distribution": {
+            "date": 10
+          },
+          "nullable": false,
+          "meaning": "创建时间",
+          "sample_values": [
+            "2024-01-15T10:30:00",
+            "2024-01-16T14:20:00",
+            "2024-01-17T09:15:00",
+            "2024-01-18T16:45:00",
+            "2024-01-19T11:00:00"
+          ],
+          "unique_count": 10
+        }
+      }
+    },
+    "users": {
+      "collection": "users",
+      "document_count": 10,
+      "sample_size": 10,
+      "indexes": [
+        {
+          "name": "_id_",
+          "keys": [
+            "_id"
+          ],
+          "unique": false,
+          "sparse": false
+        },
+        {
+          "name": "email_1",
+          "keys": [
+            "email"
+          ],
+          "unique": true,
+          "sparse": false
+        },
+        {
+          "name": "department_id_1",
+          "keys": [
+            "department_id"
+          ],
+          "unique": false,
+          "sparse": false
+        }
+      ],
+      "fields": {
+        "_id": {
+          "type": "integer",
+          "types_distribution": {
+            "integer": 10
+          },
+          "nullable": false,
+          "meaning": "主键ID",
+          "sample_values": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "unique_count": 10
+        },
+        "name": {
+          "type": "string",
+          "types_distribution": {
+            "string": 10
+          },
+          "nullable": false,
+          "meaning": "名称",
+          "sample_values": [
+            "Alice",
+            "Bob",
+            "Charlie",
+            "Diana",
+            "Eve"
+          ],
+          "unique_count": 10
+        },
+        "email": {
+          "type": "string",
+          "types_distribution": {
+            "string": 10
+          },
+          "nullable": false,
+          "meaning": "邮箱地址",
+          "sample_values": [
+            "alice@example.com",
+            "bob@example.com",
+            "charlie@example.com",
+            "diana@example.com",
+            "eve@example.com"
+          ],
+          "unique_count": 10
+        },
+        "age": {
+          "type": "integer",
+          "types_distribution": {
+            "integer": 10
+          },
+          "nullable": false,
+          "meaning": "年龄",
+          "sample_values": [
+            28,
+            35,
+            42,
+            31,
+            26
+          ],
+          "unique_count": 10
+        },
+        "department_id": {
+          "type": "integer",
+          "types_distribution": {
+            "integer": 10
+          },
+          "nullable": false,
+          "meaning": "部门ID",
+          "sample_values": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "unique_count": 4
+        },
+        "salary": {
+          "type": "integer",
+          "types_distribution": {
+            "integer": 8,
+            "double": 2
+          },
+          "nullable": false,
+          "meaning": "薪资",
+          "sample_values": [
+            75000,
+            95000,
+            85000,
+            72000,
+            65000
+          ],
+          "unique_count": 10
+        },
+        "created_at": {
+          "type": "date",
+          "types_distribution": {
+            "date": 10
+          },
+          "nullable": false,
+          "meaning": "创建时间",
+          "sample_values": [
+            "2024-01-01T00:00:00",
+            "2024-01-02T00:00:00",
+            "2024-01-03T00:00:00",
+            "2024-01-04T00:00:00",
+            "2024-01-05T00:00:00"
+          ],
+          "unique_count": 10
+        }
+      }
+    },
+    "departments": {
+      "collection": "departments",
+      "document_count": 4,
+      "sample_size": 4,
+      "indexes": [
+        {
+          "name": "_id_",
+          "keys": [
+            "_id"
+          ],
+          "unique": false,
+          "sparse": false
+        }
+      ],
+      "fields": {
+        "_id": {
+          "type": "integer",
+          "types_distribution": {
+            "integer": 4
+          },
+          "nullable": false,
+          "meaning": "主键ID",
+          "sample_values": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "unique_count": 4
+        },
+        "name": {
+          "type": "string",
+          "types_distribution": {
+            "string": 4
+          },
+          "nullable": false,
+          "meaning": "名称",
+          "sample_values": [
+            "Engineering",
+            "Sales",
+            "Marketing",
+            "HR"
+          ],
+          "unique_count": 4
+        },
+        "budget": {
+          "type": "integer",
+          "types_distribution": {
+            "integer": 4
+          },
+          "nullable": false,
+          "meaning": "预算",
+          "sample_values": [
+            500000,
+            300000,
+            200000,
+            100000
+          ],
+          "unique_count": 4
+        }
+      }
+    }
+  },
+  "relationships": [
+    {
+      "from": "orders",
+      "to": "users",
+      "field": "user_id",
+      "type": "reference"
+    },
+    {
+      "from": "orders",
+      "to": "products",
+      "field": "items.product_id",
+      "type": "array_reference"
+    },
+    {
+      "from": "users",
+      "to": "departments",
+      "field": "department_id",
+      "type": "reference"
+    }
+  ]
+}
