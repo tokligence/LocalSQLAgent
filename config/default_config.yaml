@@ -1,0 +1,158 @@
+# Tokligence LocalSQLAgent Configuration File
+# Default configuration for all components
+
+# Application settings
+app:
+  name: "Tokligence LocalSQLAgent"
+  version: "1.0.0"
+  environment: "development"  # development, staging, production
+  debug: true
+
+# Logging configuration
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  date_format: "%Y-%m-%d %H:%M:%S"
+
+  # File logging
+  file:
+    enabled: true
+    path: "logs/"
+    filename: "localsqlagent.log"
+    max_bytes: 10485760  # 10MB
+    backup_count: 5
+
+  # Console logging
+  console:
+    enabled: true
+    colorize: true
+
+# Model configuration
+model:
+  default: "qwen2.5-coder:7b"
+  alternatives:
+    - "deepseek-coder:6.7b"
+    - "sqlcoder:7b"
+
+  ollama:
+    base_url: "http://localhost:11434"
+    timeout: 120
+    max_retries: 3
+
+# Database defaults
+databases:
+  postgresql:
+    enabled: true
+    host: "localhost"
+    port: 5432
+    database: "benchmark"
+    user: "text2sql"
+    password: "text2sql123"
+    connection_timeout: 30
+    pool_size: 5
+
+  mysql:
+    enabled: true
+    host: "localhost"
+    port: 3307  # Using 3307 to avoid conflicts
+    database: "benchmark"
+    user: "text2sql"
+    password: "text2sql123"
+    connection_timeout: 30
+    pool_size: 5
+
+  mongodb:
+    enabled: false
+    host: "localhost"
+    port: 27017
+    database: "benchmark"
+    user: "text2sql"
+    password: "text2sql123"
+    connection_timeout: 30
+
+  clickhouse:
+    enabled: false
+    host: "localhost"
+    port: 8123
+    database: "benchmark"
+    user: "text2sql"
+    password: "text2sql123"
+    connection_timeout: 30
+
+# Agent configuration
+agent:
+  max_attempts: 5
+  retry_delay: 1  # seconds
+  cache_ttl: 3600  # seconds
+  schema_cache_ttl: 1800  # seconds
+
+  # Ambiguity detection
+  ambiguity:
+    enabled: true
+    confidence_threshold: 0.7
+    max_suggestions: 3
+
+  # Execution strategies
+  strategies:
+    simple_query_threshold: 0.8
+    complex_query_min_attempts: 3
+
+# Web UI configuration
+web_ui:
+  host: "0.0.0.0"
+  port: 8501
+  title: "Tokligence LocalSQLAgent"
+  theme: "dark"
+
+  # Session settings
+  session:
+    timeout: 3600  # seconds
+    max_history: 100
+
+  # Export settings
+  export:
+    formats: ["json", "csv", "pdf"]
+    max_size_mb: 50
+
+# API Server configuration
+api_server:
+  host: "0.0.0.0"
+  port: 8711
+  cors_enabled: true
+  rate_limit:
+    enabled: true
+    requests_per_minute: 60
+
+  # Authentication (optional)
+  auth:
+    enabled: false
+    type: "api_key"  # api_key, jwt, basic
+
+# Performance tuning
+performance:
+  query_timeout: 60  # seconds
+  max_concurrent_queries: 10
+  result_limit: 10000
+
+  # Caching
+  cache:
+    enabled: true
+    type: "memory"  # memory, redis
+    size_mb: 100
+
+# Monitoring
+monitoring:
+  metrics_enabled: true
+  health_check_interval: 60  # seconds
+
+  # Alerts
+  alerts:
+    enabled: false
+    email: ""
+    webhook: ""
+
+# Security
+security:
+  sql_injection_check: true
+  data_masking: false
+  audit_logging: true

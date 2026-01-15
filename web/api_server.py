@@ -8,18 +8,15 @@ from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 import json
 import sys
-import os
 import time
 import uuid
 from typing import Dict, List, Optional, Any
-from datetime import datetime
 from pathlib import Path
 
 # Add parent directory to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from src.core.intelligent_agent import IntelligentSQLAgent
-from src.core.ambiguity_detection import AmbiguityDetector
+from src.core.intelligent_agent import IntelligentSQLAgent, ExecutionPolicy
 
 
 app = Flask(__name__)
@@ -91,12 +88,17 @@ def chat_completions():
         stream = data.get('stream', False)
 
         # Extract database configuration from messages or use default
-        db_config = extract_db_config(messages)
+        db_config = extract_db_config(messages, data)
+        execution_policy = extract_execution_policy(data)
 
         # Get or create agent
-        agent_key = f"{model}_{json.dumps(db_config, sort_keys=True)}"
+        agent_key = (
+            f"{model}_"
+            f"{json.dumps(db_config, sort_keys=True, default=str)}_"
+            f"{json.dumps(execution_policy, sort_keys=True, default=str)}"
+        )
         if agent_key not in agents:
-            agents[agent_key] = create_agent(model, db_config)
+            agents[agent_key] = create_agent(model, db_config, execution_policy)
 
         agent = agents[agent_key]
 
@@ -112,15 +114,11 @@ def chat_completions():
                 }
             }), 400
 
-        # Check for ambiguities
-        detector = AmbiguityDetector()
-        ambiguities = detector.detect(query)
-
         # Generate response
         if stream:
-            return stream_response(agent, query, ambiguities, model)
+            return stream_response(agent, query, model)
         else:
-            return normal_response(agent, query, ambiguities, model)
+            return normal_response(agent, query, model)
 
     except Exception as e:
         return jsonify({
@@ -132,8 +130,17 @@ def chat_completions():
         }), 500
 
 
-def extract_db_config(messages: List[Dict]) -> Dict:
+def extract_db_config(messages: List[Dict], data: Dict) -> Dict:
     """Extract database configuration from messages"""
+    if isinstance(data, dict) and data.get("db_config"):
+        config = data["db_config"]
+        if "port" in config:
+            try:
+                config["port"] = int(config["port"])
+            except Exception:
+                pass
+        return config
+
     # Look for database config in system message
     for msg in messages:
         if msg.get('role') == 'system':
@@ -147,8 +154,15 @@ def extract_db_config(messages: List[Dict]) -> Dict:
                         key, value = line.split(':', 1)
                         key = key.strip().lower()
                         value = value.strip()
-                        if key in ['type', 'host', 'port', 'database', 'user', 'password']:
+                        if key in ['type', 'host', 'port', 'user', 'password']:
                             config[key] = value
+                        elif key in ['db_type', 'database_type']:
+                            config['type'] = value
+                        elif key == 'database':
+                            if value.lower() in ['postgresql', 'mysql', 'clickhouse']:
+                                config['type'] = value.lower()
+                            else:
+                                config['database'] = value
 
                 if 'port' in config:
                     config['port'] = int(config['port'])
@@ -175,43 +189,23 @@ def extract_query_from_messages(messages: List[Dict]) -> Optional[str]:
     return None
 
 
-def create_agent(model: str, db_config: Dict) -> IntelligentSQLAgent:
+def create_agent(model: str, db_config: Dict, execution_policy: Dict) -> IntelligentSQLAgent:
     """Create an intelligent SQL agent"""
     actual_model = MODEL_MAPPING.get(model, "qwen2.5-coder:7b")
+    policy = ExecutionPolicy(**execution_policy) if execution_policy else ExecutionPolicy()
 
     return IntelligentSQLAgent(
         model_name=actual_model,
         db_config=db_config,
-        max_attempts=5
+        max_attempts=5,
+        execution_policy=policy
     )
 
 
-def normal_response(agent: IntelligentSQLAgent, query: str, ambiguities: List, model: str) -> Response:
+def normal_response(agent: IntelligentSQLAgent, query: str, model: str) -> Response:
     """Generate normal (non-streaming) response"""
-
-    # Build response content
-    content_parts = []
-
-    # Add ambiguity warnings if any
-    if ambiguities:
-        content_parts.append("⚠️ **Ambiguities Detected:**\n")
-        for amb in ambiguities:
-            content_parts.append(f"- `{amb.keyword}` needs clarification: {', '.join(amb.suggested_clarifications[:3])}\n")
-        content_parts.append("\n")
-
-    # Execute query (simulate for now)
-    try:
-        # In production, this would actually execute
-        sql_query = generate_sql_with_retries(agent, query)
-
-        content_parts.append(f"✅ **Generated SQL:**\n```sql\n{sql_query}\n```\n")
-        content_parts.append("\n**Explanation:**\n")
-        content_parts.append("Query successfully generated using multi-attempt strategy.")
-
-    except Exception as e:
-        content_parts.append(f"❌ **Error:** {str(e)}")
-
-    content = ''.join(content_parts)
+    result = agent.execute_query(query)
+    content = build_response_content(result)
 
     # Build OpenAI-compatible response
     response = {
@@ -237,95 +231,79 @@ def normal_response(agent: IntelligentSQLAgent, query: str, ambiguities: List, m
     return jsonify(response)
 
 
-def stream_response(agent: IntelligentSQLAgent, query: str, ambiguities: List, model: str) -> Response:
+def stream_response(agent: IntelligentSQLAgent, query: str, model: str) -> Response:
     """Generate streaming response (Server-Sent Events)"""
 
     def generate():
-        # Stream ambiguity detection results
-        if ambiguities:
-            chunk = {
-                "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
-                "object": "chat.completion.chunk",
-                "created": int(time.time()),
-                "model": model,
-                "choices": [{
-                    "index": 0,
-                    "delta": {
-                        "content": "⚠️ **Ambiguities Detected:**\n"
-                    },
-                    "finish_reason": None
-                }]
-            }
-            yield f"data: {json.dumps(chunk)}\n\n"
-
-            for amb in ambiguities:
-                chunk['choices'][0]['delta']['content'] = f"- `{amb.keyword}` needs clarification\n"
-                yield f"data: {json.dumps(chunk)}\n\n"
-                time.sleep(0.1)
-
-        # Stream SQL generation process
-        attempts = 0
-        max_attempts = 5
-
-        for attempt in range(1, max_attempts + 1):
-            chunk = {
-                "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
-                "object": "chat.completion.chunk",
-                "created": int(time.time()),
-                "model": model,
-                "choices": [{
-                    "index": 0,
-                    "delta": {
-                        "content": f"\n🔄 Attempt {attempt}/{max_attempts}: Generating SQL...\n"
-                    },
-                    "finish_reason": None
-                }]
-            }
-            yield f"data: {json.dumps(chunk)}\n\n"
-            time.sleep(0.5)
-
-            # Simulate success probability
-            import random
-            if random.random() < (0.4 + attempt * 0.15):
-                # Success!
-                sql = f"SELECT * FROM customers WHERE created_at > '2024-01-01'"
-                chunk['choices'][0]['delta']['content'] = f"\n✅ **Success!**\n```sql\n{sql}\n```\n"
-                chunk['choices'][0]['finish_reason'] = 'stop'
-                yield f"data: {json.dumps(chunk)}\n\n"
-                break
+        result = agent.execute_query(query)
+        content = build_response_content(result)
+        chunk = {
+            "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
+            "object": "chat.completion.chunk",
+            "created": int(time.time()),
+            "model": model,
+            "choices": [{
+                "index": 0,
+                "delta": {
+                    "content": content
+                },
+                "finish_reason": "stop"
+            }]
+        }
+        yield f"data: {json.dumps(chunk)}\n\n"
 
         # Send done signal
         yield "data: [DONE]\n\n"
 
     return Response(generate(), mimetype='text/event-stream')
 
+def extract_execution_policy(data: Dict) -> Dict:
+    """Extract execution policy from request data"""
+    policy = {}
+    if not isinstance(data, dict):
+        return policy
 
-def generate_sql_with_retries(agent: IntelligentSQLAgent, query: str) -> str:
-    """Generate SQL with multi-attempt strategy"""
-    # Simplified version - in production, use actual agent
-    attempts = []
+    policy.update(data.get("execution_policy", {}))
+    for key in (
+        "read_only",
+        "allow_ddl",
+        "allow_dml",
+        "allow_admin",
+        "allow_multi_statement",
+        "default_limit",
+        "enforce_default_limit"
+    ):
+        if key in data:
+            policy[key] = data[key]
+    return policy
 
-    for attempt in range(1, 6):
-        try:
-            # Simulate SQL generation with increasing success probability
-            import random
-            if random.random() < (0.4 + attempt * 0.15):
-                return f"""-- Generated on attempt {attempt}
-SELECT
-    c.customer_id,
-    c.name,
-    COUNT(o.order_id) as order_count,
-    SUM(o.total) as total_spent
-FROM customers c
-LEFT JOIN orders o ON c.customer_id = o.customer_id
-WHERE o.created_at > CURRENT_DATE - INTERVAL '30 days'
-GROUP BY c.customer_id, c.name
-ORDER BY total_spent DESC
-LIMIT 10"""
-        except Exception as e:
-            attempts.append(f"Attempt {attempt}: {str(e)}")
 
-    raise Exception(f"Failed after 5 attempts: {'; '.join(attempts)}")
+def build_response_content(result) -> str:
+    """Build JSON content for OpenAI-compatible response"""
+    payload = {
+        "success": result.success,
+        "sql": result.sql,
+        "data": result.data,
+        "columns": result.columns,
+        "row_count": result.row_count,
+        "execution_time": result.execution_time,
+        "attempts": result.attempts_count,
+        "strategy": result.strategy_used.value if result.strategy_used else None,
+        "confidence": result.confidence,
+        "error": result.error,
+        "results": result.results,
+        "affected_rows": result.affected_rows
+    }
+
+    if not result.success and result.error == "Clarification needed":
+        payload["type"] = "clarification"
+        payload["clarifications"] = result.data
+    elif result.success:
+        payload["type"] = "sql_result"
+    else:
+        payload["type"] = "error"
+
+    return json.dumps(payload, default=str)
 
 
 @app.route('/v1/embeddings', methods=['POST'])
@@ -387,6 +365,18 @@ def home():
                 },
                 "body": {
                     "model": "localsqlagent",
+                    "db_config": {
+                        "type": "postgresql",
+                        "host": "localhost",
+                        "port": 5432,
+                        "database": "benchmark",
+                        "user": "postgres",
+                        "password": "postgres"
+                    },
+                    "execution_policy": {
+                        "read_only": True,
+                        "default_limit": 10000
+                    },
                     "messages": [
                         {
                             "role": "system",

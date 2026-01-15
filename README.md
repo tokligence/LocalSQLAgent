@@ -124,29 +124,49 @@ Both work perfectly! Ambiguity detection in both languages:
 
 ## 🚀 Quick Start (2-minute Setup)
 
-### ⚡ One-Click Setup with Makefile (Recommended)
+### ⚡ Platform-Specific Setup
+
+#### 🐧 **Linux Users**
 ```bash
 # 1. Clone the repository
 git clone https://github.com/tokligence/LocalSQLAgent.git
 cd LocalSQLAgent
 
-# 2. Choose your deployment method:
+# 2. Use the default docker-compose.yml (with host network mode)
+docker-compose up -d  # Start all services
 
-# Option A: Virtual Environment (Recommended for development)
-make venv-setup   # Create venv and install dependencies
-source venv/bin/activate  # Activate virtual environment
-make start        # Start Ollama and databases
+# 3. Launch the new ChatGPT-style Web UI
+make web-ui       # Start chat interface at http://localhost:8501
 
-# Option B: Docker Deployment (Recommended for production)
-docker-compose up -d  # Start all services in containers
-
-# 3. Launch Web UI
-make web-ui       # Start interactive web interface at http://localhost:8501
-
-# 4. Start API Server (OpenAI-compatible)
+# 4. (Optional) Start API Server
 make api-server   # Start API server at http://localhost:8711
+```
 
-# Other useful commands
+#### 🍎 **macOS Users**
+```bash
+# 1. Clone the repository
+git clone https://github.com/tokligence/LocalSQLAgent.git
+cd LocalSQLAgent
+
+# 2. Use the macOS-specific configuration (with port mappings)
+docker-compose -f docker-compose.macos.yml up -d  # Start all services
+
+# 3. Launch the new ChatGPT-style Web UI
+make web-ui       # Start chat interface at http://localhost:8501
+
+# 4. (Optional) Start API Server
+make api-server   # Start API server at http://localhost:8711
+```
+
+### 🎯 **NEW: Chat Interface Features**
+- **💬 ChatGPT-style conversation** - Natural chat interface like OpenAI
+- **🤔 Interactive clarifications** - Agent asks questions when needed
+- **📊 In-chat results** - SQL and data displayed directly in conversation
+- **📝 Conversation memory** - Maintains context across messages
+- **💾 Export chat history** - Save conversations as JSON
+
+### Other Useful Commands
+```bash
 make help         # Show all available commands
 make benchmark    # Run full benchmarks
 make clean        # Clean up containers and data
@@ -199,14 +219,54 @@ python quick_start.py
 
 **That's it!** No API keys, no cloud services, no credit cards 🎉
 
-## 🖥️ Web UI & API Server
+## 🖥️ NEW: ChatGPT-Style Web UI
+
+### 💬 Chat Interface Experience
+
+**Example Conversation:**
+```
+👤 User: Show me the top 5 customers by revenue from last month
+
+🤖 Assistant: I need some clarification:
+   - The term 'last month' is ambiguous. Did you mean:
+     • December 2025
+     • The last 30 days
+     • Since the beginning of December
+   Please provide more specific details.
+
+👤 User: December 2025
+
+🤖 Assistant: ✅ Query executed successfully!
+   Attempts: 2 | Execution Time: 1.23s | Rows: 5
+
+   Generated SQL:
+   SELECT c.customer_name, SUM(o.total_amount) as revenue
+   FROM customers c
+   JOIN orders o ON c.id = o.customer_id
+   WHERE o.order_date >= '2025-12-01' AND o.order_date < '2026-01-01'
+   GROUP BY c.customer_name
+   ORDER BY revenue DESC
+   LIMIT 5
+
+   Results:
+   ┌─────────────────┬──────────┐
+   │ Customer Name   │ Revenue  │
+   ├─────────────────┼──────────┤
+   │ Acme Corp       │ $45,230  │
+   │ Tech Solutions  │ $38,150  │
+   │ Global Trade    │ $31,890  │
+   │ Prime Services  │ $28,750  │
+   │ Star Industries │ $24,320  │
+   └─────────────────┴──────────┘
+```
 
 ### Web UI Features
-- **Interactive Query Interface** - Visual Text-to-SQL with real-time feedback
-- **Database Configuration** - Easy setup for PostgreSQL, MySQL, MongoDB
-- **Query History** - Track and analyze past queries
-- **Bilingual Support** - Switch between English and Chinese
-- **Real-time Ambiguity Detection** - See potential issues before execution
+- **🎭 Natural Conversation** - Chat naturally like with ChatGPT
+- **🤔 Smart Clarifications** - Agent asks for specifics when queries are ambiguous
+- **📊 Inline Results** - SQL and data displayed directly in chat
+- **💬 Context Memory** - Maintains conversation context
+- **📥 Export Chat** - Download conversation history as JSON
+- **🔄 Real-time Updates** - See SQL generation progress
 
 Launch with: `make web-ui` or `streamlit run web/app.py`
 
@@ -230,6 +290,35 @@ print(response.choices[0].message.content)
 ```
 
 Launch with: `make api-server` or `python web/api_server.py`
+
+Integration testing guide: `docs/testing.md`
+
+Optional: pass database config and execution policy:
+```python
+import requests
+
+payload = {
+    "model": "localsqlagent",
+    "db_config": {
+        "type": "postgresql",
+        "host": "localhost",
+        "port": 5432,
+        "database": "benchmark",
+        "user": "text2sql",
+        "password": "text2sql123"
+    },
+    "execution_policy": {
+        "read_only": True,
+        "default_limit": 10000
+    },
+    "messages": [
+        {"role": "user", "content": "Find top customers by revenue"}
+    ]
+}
+
+response = requests.post("http://localhost:8711/v1/chat/completions", json=payload)
+print(response.json()["choices"][0]["message"]["content"])
+```
 
 ## 🎯 Key Features
 

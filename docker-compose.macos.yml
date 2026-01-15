@@ -1,0 +1,115 @@
+version: '3.8'
+
+services:
+  # Web UI Service
+  webui:
+    build:
+      context: .
+      target: webui
+    container_name: localsqlagent-webui
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./src:/app/src
+      - ./web:/app/web
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DB_HOST=host.docker.internal  # Use host.docker.internal on macOS
+    depends_on:
+      - postgres
+      - mysql
+      - mongodb
+
+  # API Server Service
+  api:
+    build:
+      context: .
+      target: api
+    container_name: localsqlagent-api
+    ports:
+      - "8711:8711"
+    volumes:
+      - ./src:/app/src
+      - ./web:/app/web
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DB_HOST=host.docker.internal  # Use host.docker.internal on macOS
+    depends_on:
+      - postgres
+      - mysql
+      - mongodb
+
+  postgres:
+    image: postgres:15
+    container_name: text2sql-postgres
+    environment:
+      POSTGRES_USER: text2sql
+      POSTGRES_PASSWORD: text2sql123
+      POSTGRES_DB: benchmark
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./data/init/postgres:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U text2sql"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mysql:
+    image: mysql:8.0
+    container_name: text2sql-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_USER: text2sql
+      MYSQL_PASSWORD: text2sql123
+      MYSQL_DATABASE: benchmark
+    ports:
+      - "3307:3306"  # Map to 3307 on host to avoid conflicts
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./data/init/mysql:/docker-entrypoint-initdb.d
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: text2sql-clickhouse
+    environment:
+      CLICKHOUSE_USER: text2sql
+      CLICKHOUSE_PASSWORD: text2sql123
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./data/init/clickhouse:/docker-entrypoint-initdb.d
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+  mongodb:
+    image: mongo:7
+    container_name: text2sql-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: text2sql
+      MONGO_INITDB_ROOT_PASSWORD: text2sql123
+      MONGO_INITDB_DATABASE: benchmark
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./data/init/mongodb:/docker-entrypoint-initdb.d
+
+volumes:
+  postgres_data:
+  mysql_data:
+  clickhouse_data:
+  mongodb_data:

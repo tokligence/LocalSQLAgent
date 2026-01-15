@@ -10,17 +10,21 @@ Fixes:
 import streamlit as st
 import json
 import sys
-import html
+import os
 from typing import Dict, List, Optional, Any
 import time
 from datetime import datetime, timedelta
 import pandas as pd
 from pathlib import Path
-import requests
+import uuid
+import threading
+import queue
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
+from src.core.intelligent_agent import IntelligentSQLAgent
+from src.core.ambiguity_detection import AmbiguityDetector
 from src.utils.logger import get_logger
 from src.config.llm_config import get_llm_config
 
@@ -194,6 +198,9 @@ st.markdown("""
 if 'messages' not in st.session_state:
     st.session_state.messages = []
 
+if 'agents' not in st.session_state:
+    st.session_state.agents = {}
+
 if 'current_db' not in st.session_state:
     st.session_state.current_db = 'postgresql'
 
@@ -241,22 +248,6 @@ if 'db_configs' not in st.session_state:
         }
     }
 
-if 'api_config' not in st.session_state:
-    st.session_state.api_config = {
-        "base_url": "http://localhost:8711"
-    }
-
-if 'execution_policy' not in st.session_state:
-    st.session_state.execution_policy = {
-        "read_only": True,
-        "allow_dml": False,
-        "allow_ddl": False,
-        "allow_admin": False,
-        "allow_multi_statement": True,
-        "default_limit": 10000,
-        "enforce_default_limit": True
-    }
-
 # Example queries
 EXAMPLE_QUERIES = [
     "Explore the database",
@@ -268,30 +259,25 @@ EXAMPLE_QUERIES = [
 logger = get_logger("WebUI")
 
 
-def call_api(query: str, db_config: Dict[str, Any], execution_policy: Dict[str, Any]) -> Dict[str, Any]:
-    """Call the OpenAI-compatible API server and parse JSON content"""
-    base_url = st.session_state.api_config.get("base_url", "http://localhost:8711").rstrip("/")
-    payload = {
-        "model": "localsqlagent",
-        "messages": [{"role": "user", "content": query}],
-        "stream": False,
-        "db_config": db_config,
-        "execution_policy": execution_policy
-    }
+def get_or_create_agent(db_name: str) -> Optional[IntelligentSQLAgent]:
+    """Get or create agent for database"""
+    if db_name not in st.session_state.agents:
+        try:
+            config = st.session_state.db_configs[db_name]
+            if not config['enabled']:
+                return None
 
-    response = requests.post(f"{base_url}/v1/chat/completions", json=payload, timeout=180)
-    response.raise_for_status()
-    content = response.json()["choices"][0]["message"]["content"]
+            agent = IntelligentSQLAgent(
+                model_name="ollama",  # Use configured LLM
+                db_config=config
+            )
+            st.session_state.agents[db_name] = agent
+            logger.info(f"Created agent for {db_name}")
+        except Exception as e:
+            logger.error(f"Failed to create agent for {db_name}: {str(e)}")
+            return None
 
-    try:
-        return json.loads(content)
-    except json.JSONDecodeError:
-        return {
-            "type": "error",
-            "success": False,
-            "error": "Invalid response format from API server",
-            "raw_content": content
-        }
+    return st.session_state.agents[db_name]
 
 
 def render_message(msg: Dict):
@@ -303,78 +289,38 @@ def render_message(msg: Dict):
         """, unsafe_allow_html=True)
 
         if msg.get("success"):
+            # Show SQL
+            st.markdown('<div class="sql-code">', unsafe_allow_html=True)
+            st.code(msg.get("sql", ""), language="sql")
+            st.markdown('</div>', unsafe_allow_html=True)
+
             # Metrics row (smaller)
-            cols = st.columns(5)
+            cols = st.columns(4)
             with cols[0]:
                 st.caption(f"📊 {msg.get('row_count', 0)} rows")
             with cols[1]:
-                exec_time = msg.get('execution_time', 0)
-                if exec_time is not None:
-                    st.caption(f"⚡ {float(exec_time):.2f}s")
-                else:
-                    st.caption("⚡ N/A")
+                st.caption(f"⚡ {msg.get('execution_time', 0):.2f}s")
             with cols[2]:
                 st.caption(f"🔄 Attempt {msg.get('attempts', 1)}")
             with cols[3]:
                 if msg.get('columns'):
                     st.caption(f"📋 {len(msg['columns'])} cols")
-            with cols[4]:
-                if msg.get("affected_rows") is not None:
-                    st.caption(f"✍️ {msg.get('affected_rows')} affected")
 
-            if msg.get("results"):
-                for idx, item in enumerate(msg["results"], 1):
-                    st.markdown(f"**Statement {idx}**")
-                    if item.get("sql"):
-                        st.code(item["sql"], language="sql")
-                    if item.get("data"):
-                        try:
-                            df = pd.DataFrame(item["data"], columns=item.get("columns"))
-                            display_height = min(400, max(100, len(df) * 35 + 40))
-                            st.dataframe(df, use_container_width=True, height=display_height)
-                        except Exception as e:
-                            logger.warning(f"Failed to display data as DataFrame: {e}")
-                            st.json(item.get("data"))
-                    elif item.get("row_count") is not None:
-                        st.caption(f"Rows: {item.get('row_count')}")
-            else:
-                # Show SQL
-                st.markdown('<div class="sql-code">', unsafe_allow_html=True)
-                st.code(msg.get("sql", ""), language="sql")
-                st.markdown('</div>', unsafe_allow_html=True)
+            # Show data
+            if msg.get("data"):
+                df = pd.DataFrame(msg["data"], columns=msg.get("columns"))
+                st.dataframe(df, use_container_width=True, height=min(400, len(df) * 35 + 40))
 
-                # Show data
-                if msg.get("data"):
-                    df = None
-                    try:
-                        # Handle different data formats safely
-                        data = msg["data"]
-                        columns = msg.get("columns")
-
-                        # Create DataFrame with proper error handling
-                        if columns:
-                            df = pd.DataFrame(data, columns=columns)
-                        else:
-                            df = pd.DataFrame(data)
-
-                        # Display with appropriate height
-                        display_height = min(400, max(100, len(df) * 35 + 40))
-                        st.dataframe(df, use_container_width=True, height=display_height)
-
-                        # Download option (only if DataFrame was created successfully)
-                        csv = df.to_csv(index=False)
-                        st.download_button(
-                            label="📥 Download CSV",
-                            data=csv,
-                            file_name=f"query_result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                            mime="text/csv",
-                            key=f"download_{msg.get('timestamp', '')}",
-                            use_container_width=False
-                        )
-                    except Exception as e:
-                        logger.warning(f"Failed to display data as DataFrame: {e}")
-                        # Fallback to simple display
-                        st.json(msg["data"])
+                # Download option
+                csv = df.to_csv(index=False)
+                st.download_button(
+                    label="📥 Download CSV",
+                    data=csv,
+                    file_name=f"query_result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv",
+                    key=f"download_{msg.get('timestamp', '')}",
+                    use_container_width=False
+                )
         else:
             st.error(msg.get("error", "Query failed"))
 
@@ -403,27 +349,23 @@ def render_message(msg: Dict):
         """, unsafe_allow_html=True)
 
     elif msg["role"] == "user":
-        # User message (escape HTML to prevent XSS)
-        import html
-        escaped_content = html.escape(msg['content'])
+        # User message
         st.markdown(f"""
             <div class="message-wrapper user-message-wrapper">
                 <div class="message-content user-message">
-                    {escaped_content}
+                    {msg['content']}
                 </div>
                 <div class="message-avatar user-avatar">👤</div>
             </div>
         """, unsafe_allow_html=True)
 
     else:
-        # Assistant message (escape HTML to prevent XSS)
-        import html
-        escaped_content = html.escape(msg['content'])
+        # Assistant message
         st.markdown(f"""
             <div class="message-wrapper assistant-message-wrapper">
                 <div class="message-avatar assistant-avatar">🤖</div>
                 <div class="message-content assistant-message">
-                    {escaped_content}
+                    {msg['content']}
                 </div>
             </div>
         """, unsafe_allow_html=True)
@@ -441,86 +383,135 @@ def process_query_improved(user_input: str):
     }
     st.session_state.messages.append(thinking_msg)
 
-    execute_query_improved(user_input)
+    # Check for ambiguities
+    detector = AmbiguityDetector()
+    ambiguities = detector.detect(user_input)
+
+    if ambiguities and len(ambiguities) > 0:
+        # Remove thinking message
+        st.session_state.messages = [m for m in st.session_state.messages if m.get("type") != "thinking"]
+
+        # Request clarification
+        clarification_msg = {
+            "role": "assistant",
+            "content": f"🤔 Please clarify: '{ambiguities[0].keyword}' - do you mean {', '.join(ambiguities[0].suggested_clarifications[:2])}?",
+            "timestamp": datetime.now().isoformat()
+        }
+        st.session_state.messages.append(clarification_msg)
+        st.session_state.conversation_state['awaiting_clarification'] = True
+        st.session_state.conversation_state['original_query'] = user_input
+    else:
+        execute_query_improved(user_input)
 
 
 def execute_query_improved(query: str):
-    """Improved query execution with agent-driven intelligence"""
+    """Improved query execution with progress updates"""
+    agent = get_or_create_agent(st.session_state.current_db)
+
     # Remove thinking message
     st.session_state.messages = [m for m in st.session_state.messages if m.get("type") != "thinking"]
 
-    config = st.session_state.db_configs[st.session_state.current_db]
-    if not config.get("enabled", False):
+    if not agent:
         error_msg = {
             "role": "assistant",
-            "content": f"❌ {st.session_state.current_db.upper()} is disabled in settings",
+            "content": f"❌ Unable to connect to {st.session_state.current_db.upper()}",
             "timestamp": datetime.now().isoformat()
         }
         st.session_state.messages.append(error_msg)
         return
 
-    db_connection_config = {k: v for k, v in config.items() if k != "enabled"}
-    execution_policy = st.session_state.get("execution_policy", {
-        "read_only": True,
-        "allow_dml": False,
-        "allow_ddl": False,
-        "allow_admin": False,
-        "allow_multi_statement": True,
-        "default_limit": 10000,
-        "enforce_default_limit": True
-    })
+    # Handle exploration queries specially
+    is_exploration = any(keyword in query.lower() for keyword in ['explore', 'show me the database', 'what tables'])
 
-    try:
-        response = call_api(query, db_connection_config, execution_policy)
-
-        if response.get("type") == "clarification":
-            clarifications = response.get("clarifications", [])
-            if clarifications:
-                prompt = clarifications[0]
-                options = prompt.get("options", [])
-                message = f"🤔 {prompt.get('keyword', 'Clarification needed')}: {', '.join(options[:3])}"
-            else:
-                message = "🤔 Clarification needed. Please provide more details."
-
-            clarification_msg = {
-                "role": "assistant",
-                "content": message,
-                "timestamp": datetime.now().isoformat()
-            }
-            st.session_state.messages.append(clarification_msg)
-            st.session_state.conversation_state['awaiting_clarification'] = True
-            st.session_state.conversation_state['original_query'] = query
-            return
-
-        if response.get("type") == "sql_result" and response.get("success"):
-            result_msg = {
-                "role": "assistant",
-                "type": "sql_result",
-                "success": True,
-                "sql": response.get("sql"),
-                "data": response.get("data"),
-                "columns": response.get("columns"),
-                "row_count": response.get("row_count", 0),
-                "execution_time": response.get("execution_time"),
-                "attempts": response.get("attempts", 1),
-                "results": response.get("results"),
-                "affected_rows": response.get("affected_rows"),
-                "timestamp": datetime.now().isoformat()
-            }
-            st.session_state.messages.append(result_msg)
-            return
-
-        error_msg = {
+    if is_exploration:
+        # Add exploration message
+        explore_msg = {
             "role": "assistant",
-            "type": "sql_result",
-            "success": False,
-            "error": response.get("error", "Query execution failed"),
+            "type": "thinking",
+            "content": "Exploring database structure...",
             "timestamp": datetime.now().isoformat()
         }
-        st.session_state.messages.append(error_msg)
+        st.session_state.messages.append(explore_msg)
+        st.rerun()  # Show immediately
+
+    try:
+        # For exploration, we might want to run multiple queries
+        if is_exploration:
+            # Remove exploration message
+            st.session_state.messages = [m for m in st.session_state.messages if m.get("type") != "thinking"]
+
+            # Query 1: Show tables
+            tables_query = "Show me all tables in the database"
+            result = agent.execute_query(tables_query)
+
+            if result.success:
+                result_msg = {
+                    "role": "assistant",
+                    "type": "sql_result",
+                    "success": True,
+                    "sql": result.sql or "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'",
+                    "data": result.data,
+                    "columns": result.columns,
+                    "row_count": result.row_count,
+                    "execution_time": result.execution_time,
+                    "attempts": 1,
+                    "timestamp": datetime.now().isoformat()
+                }
+                st.session_state.messages.append(result_msg)
+
+            # Query 2: Show sample data from main tables
+            if result.success and result.data:
+                for table_data in result.data[:3]:  # First 3 tables
+                    table_name = table_data[0] if isinstance(table_data, (list, tuple)) else table_data.get('table_name')
+                    if table_name:
+                        sample_query = f"Show me sample data from {table_name}"
+                        sample_result = agent.execute_query(sample_query)
+
+                        if sample_result.success:
+                            sample_msg = {
+                                "role": "assistant",
+                                "type": "sql_result",
+                                "success": True,
+                                "sql": sample_result.sql,
+                                "data": sample_result.data[:5],  # Limit to 5 rows
+                                "columns": sample_result.columns,
+                                "row_count": min(5, sample_result.row_count),
+                                "execution_time": sample_result.execution_time,
+                                "attempts": 1,
+                                "timestamp": datetime.now().isoformat()
+                            }
+                            st.session_state.messages.append(sample_msg)
+
+        else:
+            # Normal query execution
+            result = agent.execute_query(query)
+
+            if result.success:
+                result_msg = {
+                    "role": "assistant",
+                    "type": "sql_result",
+                    "success": True,
+                    "sql": result.sql,
+                    "data": result.data,
+                    "columns": result.columns,
+                    "row_count": result.row_count,
+                    "execution_time": result.execution_time,
+                    "attempts": result.attempts_count,
+                    "timestamp": datetime.now().isoformat()
+                }
+                st.session_state.messages.append(result_msg)
+            else:
+                error_msg = {
+                    "role": "assistant",
+                    "type": "sql_result",
+                    "success": False,
+                    "error": result.error or "Query execution failed",
+                    "timestamp": datetime.now().isoformat()
+                }
+                st.session_state.messages.append(error_msg)
 
     except Exception as e:
-        logger.error(f"API request error: {str(e)}", exc_info=True)
+        logger.error(f"Query execution error: {str(e)}", exc_info=True)
 
         error_msg = {
             "role": "assistant",
@@ -551,10 +542,8 @@ def render_sidebar():
 
             if current_db != st.session_state.current_db:
                 st.session_state.current_db = current_db
-                # Clear messages when switching databases
-                st.session_state.messages = []
-                # Force a rerun to ensure clean state
-                st.rerun()
+                if current_db in st.session_state.agents:
+                    del st.session_state.agents[current_db]
 
             # Connection status
             config = st.session_state.db_configs[current_db]
@@ -579,172 +568,6 @@ def render_sidebar():
             st.metric("Queries", query_count, label_visibility="collapsed")
 
         st.markdown("---")
-
-        # Database Configuration
-        with st.expander("🗄️ Database Settings", expanded=False):
-            st.markdown("**Configure Database Connections**")
-
-            # Select database to configure
-            db_names = list(st.session_state.db_configs.keys())
-            selected_db = st.selectbox(
-                "Select Database",
-                db_names + ["+ Add New Database"],
-                format_func=lambda x: x.upper() if x != "+ Add New Database" else x,
-                key="db_selector"
-            )
-
-            if selected_db == "+ Add New Database":
-                # Add new database
-                st.markdown("**New Database Configuration**")
-                new_db_name = st.text_input("Database Name", placeholder="e.g., mydb")
-                new_db_type = st.selectbox("Database Type", ["postgresql", "mysql", "clickhouse"])
-
-                if new_db_name and new_db_name not in st.session_state.db_configs:
-                    new_host = st.text_input("Host", value="localhost")
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        new_port = st.number_input("Port", value=5432 if new_db_type == "postgresql" else 3306)
-                    with col2:
-                        new_database = st.text_input("Database Name", value="benchmark")
-
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        new_user = st.text_input("Username", value="user")
-                    with col2:
-                        new_password = st.text_input("Password", type="password", value="")
-
-                    if st.button("➕ Add Database", use_container_width=True):
-                        st.session_state.db_configs[new_db_name] = {
-                            'type': new_db_type,
-                            'host': new_host,
-                            'port': new_port,
-                            'database': new_database,
-                            'user': new_user,
-                            'password': new_password,
-                            'enabled': False
-                        }
-                        st.success(f"✅ Added {new_db_name} database!")
-                        st.rerun()
-            else:
-                # Edit existing database
-                config = st.session_state.db_configs[selected_db]
-                st.markdown(f"**Edit {selected_db.upper()} Configuration**")
-
-                # Database type (read-only)
-                st.text_input("Database Type", value=config['type'], disabled=True)
-
-                # Connection settings
-                config['host'] = st.text_input("Host", value=config['host'], key=f"{selected_db}_host")
-
-                col1, col2 = st.columns(2)
-                with col1:
-                    config['port'] = st.number_input("Port", value=config['port'], key=f"{selected_db}_port")
-                with col2:
-                    config['database'] = st.text_input("Database", value=config['database'], key=f"{selected_db}_database")
-
-                col1, col2 = st.columns(2)
-                with col1:
-                    config['user'] = st.text_input("Username", value=config['user'], key=f"{selected_db}_user")
-                with col2:
-                    config['password'] = st.text_input("Password", type="password", value=config['password'], key=f"{selected_db}_password")
-
-                # Enable/Disable toggle
-                config['enabled'] = st.checkbox("Enable this database", value=config.get('enabled', False), key=f"{selected_db}_enabled")
-
-                # Test and Save buttons
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("🔌 Test Connection", key=f"{selected_db}_test", use_container_width=True):
-                        # Test database connection
-                        try:
-                            if config['type'] == 'postgresql':
-                                import psycopg2
-                                conn = psycopg2.connect(
-                                    host=config['host'],
-                                    port=config['port'],
-                                    database=config['database'],
-                                    user=config['user'],
-                                    password=config['password']
-                                )
-                                conn.close()
-                                st.success("✅ Connection successful!")
-                            elif config['type'] == 'mysql':
-                                import pymysql
-                                conn = pymysql.connect(
-                                    host=config['host'],
-                                    port=config['port'],
-                                    database=config['database'],
-                                    user=config['user'],
-                                    password=config['password']
-                                )
-                                conn.close()
-                                st.success("✅ Connection successful!")
-                            else:
-                                st.info("ClickHouse connection test not implemented")
-                        except Exception as e:
-                            st.error(f"❌ Connection failed: {str(e)}")
-
-                with col2:
-                    if st.button("💾 Save Changes", key=f"{selected_db}_save", use_container_width=True):
-                        st.session_state.db_configs[selected_db] = config
-                        st.success(f"✅ Saved {selected_db} configuration!")
-
-        st.markdown("---")
-
-        # API Server Settings
-        with st.expander("🌐 API Server Settings"):
-            st.markdown("**OpenAI-Compatible API Server**")
-            base_url = st.text_input(
-                "API Base URL",
-                value=st.session_state.api_config.get("base_url", "http://localhost:8711")
-            )
-
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("💾 Save API URL", use_container_width=True):
-                    st.session_state.api_config["base_url"] = base_url
-                    st.success("✅ API URL saved")
-            with col2:
-                if st.button("🔎 Health Check", use_container_width=True):
-                    try:
-                        response = requests.get(f"{base_url.rstrip('/')}/health", timeout=5)
-                        if response.status_code == 200:
-                            st.success("✅ API server is healthy")
-                        else:
-                            st.warning(f"⚠️ API server returned {response.status_code}")
-                    except Exception as e:
-                        st.error(f"❌ API server unreachable: {str(e)}")
-
-        st.markdown("---")
-
-        # Execution Policy
-        with st.expander("🛡️ Execution Policy"):
-            policy = st.session_state.execution_policy
-            policy["read_only"] = st.checkbox("Read-only mode", value=policy.get("read_only", True))
-            policy["allow_dml"] = st.checkbox("Allow DML (INSERT/UPDATE/DELETE)", value=policy.get("allow_dml", False))
-            policy["allow_ddl"] = st.checkbox("Allow DDL (CREATE/ALTER/DROP)", value=policy.get("allow_ddl", False))
-            policy["allow_admin"] = st.checkbox("Allow admin (SET/USE)", value=policy.get("allow_admin", False))
-            policy["allow_multi_statement"] = st.checkbox(
-                "Allow multi-statement queries",
-                value=policy.get("allow_multi_statement", True)
-            )
-            policy["enforce_default_limit"] = st.checkbox(
-                "Enforce default LIMIT",
-                value=policy.get("enforce_default_limit", True)
-            )
-            policy["default_limit"] = st.number_input(
-                "Default LIMIT",
-                min_value=0,
-                max_value=1000000,
-                value=int(policy.get("default_limit", 10000)),
-                step=1000
-            )
-            if policy.get("read_only") and (
-                policy.get("allow_dml") or policy.get("allow_ddl") or policy.get("allow_admin")
-            ):
-                policy["read_only"] = False
-                st.info("Read-only disabled because write permissions are enabled.")
-            st.session_state.execution_policy = policy
 
         # LLM Configuration
         with st.expander("🤖 LLM Settings"):
@@ -805,6 +628,7 @@ def render_sidebar():
                     llm_config.config["ollama"]["model"] = selected_model
                     if llm_config.save_config(llm_config.config):
                         st.success("✅ Settings saved!")
+                        st.session_state.agents = {}
 
             # Display current status
             st.markdown("---")

@@ -4,6 +4,7 @@ Supports multiple schema sources including database introspection, MCP, and API 
 """
 
 import json
+import time
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
@@ -96,6 +97,15 @@ class DatabaseIntrospectionProvider(SchemaProvider):
         else:
             raise ValueError(f"Unsupported database type: {self.db_type}")
 
+    def _disconnect(self):
+        """Close database connection"""
+        if self.connection:
+            try:
+                self.connection.close()
+            except Exception:
+                pass
+            self.connection = None
+
     def validate_connection(self) -> bool:
         """Validate database connection"""
         try:
@@ -109,27 +119,32 @@ class DatabaseIntrospectionProvider(SchemaProvider):
             return True
         except Exception:
             return False
+        finally:
+            self._disconnect()
 
     def get_schema(self) -> SchemaInfo:
         """Get complete database schema through introspection"""
-        if not self.connection:
-            self._connect()
+        try:
+            if not self.connection:
+                self._connect()
 
-        tables = {}
+            tables = {}
 
-        if self.db_type == "postgresql":
-            tables = self._get_postgresql_schema()
-        elif self.db_type == "mysql":
-            tables = self._get_mysql_schema()
-        elif self.db_type == "clickhouse":
-            tables = self._get_clickhouse_schema()
+            if self.db_type == "postgresql":
+                tables = self._get_postgresql_schema()
+            elif self.db_type == "mysql":
+                tables = self._get_mysql_schema()
+            elif self.db_type == "clickhouse":
+                tables = self._get_clickhouse_schema()
 
-        return SchemaInfo(
-            database_name=self.connection_params.get("database", "unknown"),
-            tables=tables,
-            source=SchemaSourceType.DATABASE_INTROSPECTION,
-            metadata={"db_type": self.db_type}
-        )
+            return SchemaInfo(
+                database_name=self.connection_params.get("database", "unknown"),
+                tables=tables,
+                source=SchemaSourceType.DATABASE_INTROSPECTION,
+                metadata={"db_type": self.db_type}
+            )
+        finally:
+            self._disconnect()
 
     def _get_postgresql_schema(self) -> Dict[str, TableInfo]:
         """Get PostgreSQL schema"""
@@ -223,13 +238,146 @@ class DatabaseIntrospectionProvider(SchemaProvider):
 
     def _get_mysql_schema(self) -> Dict[str, TableInfo]:
         """Get MySQL schema - similar implementation"""
-        # Similar to PostgreSQL but with MySQL-specific queries
-        pass
+        cursor = self.connection.cursor()
+        tables = {}
+        db_name = self.connection_params.get("database")
+
+        cursor.execute("""
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = %s
+            AND table_type = 'BASE TABLE'
+        """, (db_name,))
+        table_names = [row[0] for row in cursor.fetchall()]
+
+        for table_name in table_names:
+            cursor.execute("""
+                SELECT
+                    c.column_name,
+                    c.data_type,
+                    c.is_nullable,
+                    CASE
+                        WHEN pk.column_name IS NOT NULL THEN true
+                        ELSE false
+                    END as is_primary_key,
+                    CASE
+                        WHEN fk.column_name IS NOT NULL THEN true
+                        ELSE false
+                    END as is_foreign_key,
+                    CONCAT(fk.referenced_table_name, '.', fk.referenced_column_name) as foreign_ref
+                FROM information_schema.columns c
+                LEFT JOIN (
+                    SELECT kcu.column_name
+                    FROM information_schema.table_constraints tc
+                    JOIN information_schema.key_column_usage kcu
+                        ON tc.constraint_name = kcu.constraint_name
+                        AND tc.table_schema = kcu.table_schema
+                    WHERE tc.table_schema = %s
+                    AND tc.table_name = %s
+                    AND tc.constraint_type = 'PRIMARY KEY'
+                ) pk ON c.column_name = pk.column_name
+                LEFT JOIN (
+                    SELECT
+                        kcu.column_name,
+                        kcu.referenced_table_name,
+                        kcu.referenced_column_name
+                    FROM information_schema.key_column_usage kcu
+                    WHERE kcu.table_schema = %s
+                    AND kcu.table_name = %s
+                    AND kcu.referenced_table_name IS NOT NULL
+                ) fk ON c.column_name = fk.column_name
+                WHERE c.table_schema = %s
+                AND c.table_name = %s
+                ORDER BY c.ordinal_position
+            """, (db_name, table_name, db_name, table_name, db_name, table_name))
+
+            columns = []
+            for row in cursor.fetchall():
+                columns.append(ColumnInfo(
+                    name=row[0],
+                    data_type=row[1],
+                    is_nullable=(row[2] == 'YES'),
+                    is_primary_key=row[3],
+                    is_foreign_key=row[4],
+                    foreign_key_ref=row[5]
+                ))
+
+            # Get row count
+            cursor.execute(f"SELECT COUNT(*) FROM `{table_name}`")
+            row_count = cursor.fetchone()[0]
+
+            # Get sample data
+            cursor.execute(f"SELECT * FROM `{table_name}` LIMIT 3")
+            sample_rows = cursor.fetchall()
+            sample_data = []
+            if sample_rows:
+                col_names = [desc[0] for desc in cursor.description]
+                for row in sample_rows:
+                    sample_data.append(dict(zip(col_names, row)))
+
+            tables[table_name] = TableInfo(
+                name=table_name,
+                columns=columns,
+                row_count=row_count,
+                sample_data=sample_data
+            )
+
+        cursor.close()
+        return tables
 
     def _get_clickhouse_schema(self) -> Dict[str, TableInfo]:
         """Get ClickHouse schema - similar implementation"""
-        # Similar to PostgreSQL but with ClickHouse-specific queries
-        pass
+        tables = {}
+        db_name = self.connection_params.get("database", "default")
+
+        result = self.connection.query(
+            f"SELECT name FROM system.tables WHERE database = '{db_name}'"
+        )
+        table_names = [row[0] for row in result.result_rows]
+
+        for table_name in table_names:
+            columns_result = self.connection.query(
+                f"""
+                SELECT name, type, is_in_primary_key
+                FROM system.columns
+                WHERE database = '{db_name}'
+                AND table = '{table_name}'
+                ORDER BY position
+                """
+            )
+
+            columns = []
+            for row in columns_result.result_rows:
+                columns.append(ColumnInfo(
+                    name=row[0],
+                    data_type=row[1],
+                    is_nullable=True,
+                    is_primary_key=bool(row[2]),
+                    is_foreign_key=False,
+                    foreign_key_ref=None
+                ))
+
+            row_count_result = self.connection.query(
+                f"SELECT COUNT(*) FROM {db_name}.{table_name}"
+            )
+            row_count = row_count_result.result_rows[0][0] if row_count_result.result_rows else 0
+
+            sample_result = self.connection.query(
+                f"SELECT * FROM {db_name}.{table_name} LIMIT 3"
+            )
+            sample_data = []
+            if sample_result.result_rows:
+                for row in sample_result.result_rows:
+                    sample_data.append(dict(zip(sample_result.column_names, row)))
+
+            tables[table_name] = TableInfo(
+                name=table_name,
+                columns=columns,
+                row_count=row_count,
+                sample_data=sample_data
+            )
+
+        return tables
 
     def get_table_info(self, table_name: str) -> Optional[TableInfo]:
         """Get info for specific table"""
@@ -335,11 +483,14 @@ class SchemaManager:
     """
 
     def __init__(self, primary_provider: SchemaProvider,
-                 fallback_providers: Optional[List[SchemaProvider]] = None):
+                 fallback_providers: Optional[List[SchemaProvider]] = None,
+                 allow_fallback_schema: bool = False):
         self.primary_provider = primary_provider
         self.fallback_providers = fallback_providers or []
         self.schema_cache = None
+        self.cache_timestamp = None
         self.cache_ttl = 3600  # 1 hour
+        self.allow_fallback_schema = allow_fallback_schema
 
     def get_schema(self, force_refresh: bool = False) -> SchemaInfo:
         """
@@ -352,26 +503,93 @@ class SchemaManager:
             SchemaInfo from first successful provider
         """
         if self.schema_cache and not force_refresh:
-            return self.schema_cache
+            if self.cache_timestamp and (time.time() - self.cache_timestamp) < self.cache_ttl:
+                return self.schema_cache
+
+        # Add logging
+        import sys
+        from pathlib import Path
+        sys.path.append(str(Path(__file__).parent.parent))
+
+        try:
+            from utils.logger import get_logger
+            logger = get_logger("SchemaManager")
+        except:
+            import logging
+            logger = logging.getLogger(__name__)
 
         # Try primary provider
-        if self.primary_provider.validate_connection():
+        logger.debug("Attempting to validate primary provider connection...")
+
+        if self.primary_provider and self.primary_provider.validate_connection():
             try:
+                logger.info("Primary provider validated, getting schema...")
                 self.schema_cache = self.primary_provider.get_schema()
+                self.cache_timestamp = time.time()
+                logger.info(f"Schema retrieved successfully with {len(self.schema_cache.tables)} tables")
                 return self.schema_cache
             except Exception as e:
-                print(f"Primary provider failed: {e}")
+                logger.error(f"Primary provider failed: {str(e)}", exc_info=True)
+        else:
+            logger.warning("Primary provider validation failed or provider is None")
 
         # Try fallback providers
-        for provider in self.fallback_providers:
-            if provider.validate_connection():
+        for i, provider in enumerate(self.fallback_providers):
+            logger.debug(f"Attempting fallback provider {i+1}...")
+
+            if provider and provider.validate_connection():
                 try:
+                    logger.info(f"Fallback provider {i+1} validated, getting schema...")
                     self.schema_cache = provider.get_schema()
+                    self.cache_timestamp = time.time()
+                    logger.info(f"Schema retrieved from fallback provider with {len(self.schema_cache.tables)} tables")
                     return self.schema_cache
                 except Exception as e:
-                    print(f"Fallback provider failed: {e}")
+                    logger.error(f"Fallback provider {i+1} failed: {str(e)}")
+            else:
+                logger.warning(f"Fallback provider {i+1} validation failed")
 
-        raise Exception("No schema providers available")
+        if not self.allow_fallback_schema:
+            logger.error("Schema discovery failed for all providers")
+            raise Exception("Schema discovery failed for all providers")
+
+        # If we reach here, provide a fallback schema with basic structure
+        logger.warning("No schema providers available, using fallback schema")
+
+        # Create a basic fallback schema so the system doesn't crash
+        fallback_schema = SchemaInfo(
+            database_name="unknown",
+            tables={
+                "customers": TableInfo(
+                    name="customers",
+                    columns=[
+                        ColumnInfo(name="id", data_type="integer", is_primary_key=True),
+                        ColumnInfo(name="name", data_type="varchar"),
+                        ColumnInfo(name="email", data_type="varchar"),
+                        ColumnInfo(name="created_at", data_type="timestamp")
+                    ],
+                    row_count=0,
+                    description="Fallback customers table"
+                ),
+                "orders": TableInfo(
+                    name="orders",
+                    columns=[
+                        ColumnInfo(name="id", data_type="integer", is_primary_key=True),
+                        ColumnInfo(name="customer_id", data_type="integer"),
+                        ColumnInfo(name="total", data_type="decimal"),
+                        ColumnInfo(name="created_at", data_type="timestamp")
+                    ],
+                    row_count=0,
+                    description="Fallback orders table"
+                )
+            },
+            source=SchemaSourceType.SYSTEM_PROMPT,
+            metadata={"warning": "Using fallback schema - database connection may be unavailable"}
+        )
+
+        self.schema_cache = fallback_schema
+        self.cache_timestamp = time.time()
+        return self.schema_cache
 
     def format_for_llm(self, schema: SchemaInfo, include_samples: bool = False) -> str:
         """
