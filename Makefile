@@ -12,6 +12,8 @@ help:
 	@echo "╚══════════════════════════════════════════════════════════════╝"
 	@echo ""
 	@echo "Available commands:"
+	@echo "  make venv           - Create Python virtual environment"
+	@echo "  make venv-setup     - Setup venv with all dependencies"
 	@echo "  make install        - Install Python dependencies"
 	@echo "  make setup-ollama   - Install Ollama and download models"
 	@echo "  make setup-db       - Start all databases with Docker"
@@ -27,11 +29,27 @@ help:
 	@echo "Quick start:"
 	@echo "  make start && make web-ui"
 
+# Create virtual environment
+venv:
+	@echo "🐍 Creating Python virtual environment..."
+	python3 -m venv venv
+	@echo "✅ Virtual environment created!"
+	@echo ""
+	@echo "To activate the virtual environment, run:"
+	@echo "  source venv/bin/activate"
+
 # Install Python dependencies
 install:
 	@echo "📦 Installing Python dependencies..."
 	pip install -r requirements.txt
 	@echo "✅ Dependencies installed!"
+
+# Setup with virtual environment
+venv-setup: venv
+	@echo "🔧 Setting up virtual environment..."
+	./venv/bin/pip install --upgrade pip
+	./venv/bin/pip install -r requirements.txt
+	@echo "✅ Virtual environment setup complete!"
 
 # Setup Ollama and download models
 setup-ollama:
@@ -84,23 +102,37 @@ stop:
 # Run quick start demo
 quick-start: install
 	@echo "🎯 Running quick start demo..."
-	python quick_start.py
+	@if [ -d "venv" ]; then \
+		./venv/bin/python quick_start.py; \
+	else \
+		python quick_start.py; \
+	fi
 
 # Launch Web UI
 web-ui: install
 	@echo "🌐 Launching Web UI..."
 	@echo "📍 Opening at http://localhost:8501"
 	@echo ""
-	@pip install streamlit flask flask-cors pymongo 2>/dev/null || true
-	streamlit run web/app.py
+	@if [ -d "venv" ]; then \
+		./venv/bin/pip install streamlit flask flask-cors pymongo 2>/dev/null || true; \
+		./venv/bin/streamlit run web/app.py; \
+	else \
+		pip install streamlit flask flask-cors pymongo 2>/dev/null || true; \
+		streamlit run web/app.py; \
+	fi
 
 # Start API Server
 api-server: install
 	@echo "🔌 Starting OpenAI-Compatible API Server..."
 	@echo "📍 API endpoint: http://localhost:8711"
 	@echo ""
-	@pip install flask flask-cors 2>/dev/null || true
-	python web/api_server.py
+	@if [ -d "venv" ]; then \
+		./venv/bin/pip install flask flask-cors 2>/dev/null || true; \
+		./venv/bin/python web/api_server.py; \
+	else \
+		pip install flask flask-cors 2>/dev/null || true; \
+		python web/api_server.py; \
+	fi
 
 # Run benchmarks
 benchmark: install

@@ -128,11 +128,17 @@ Both work perfectly! Ambiguity detection in both languages:
 git clone https://github.com/tokligence/LocalSQLAgent.git
 cd LocalSQLAgent
 
-# 2. One-click install and start
-make start        # Auto-installs Ollama, downloads models, starts databases
-make quick-start  # Run demo
+# 2. Choose your deployment method:
 
-# 3. Launch Web UI (NEW!)
+# Option A: Virtual Environment (Recommended for development)
+make venv-setup   # Create venv and install dependencies
+source venv/bin/activate  # Activate virtual environment
+make start        # Start Ollama and databases
+
+# Option B: Docker Deployment (Recommended for production)
+docker-compose up -d  # Start all services in containers
+
+# 3. Launch Web UI
 make web-ui       # Start interactive web interface at http://localhost:8501
 
 # 4. Start API Server (OpenAI-compatible)
@@ -142,6 +148,35 @@ make api-server   # Start API server at http://localhost:8711
 make help         # Show all available commands
 make benchmark    # Run full benchmarks
 make clean        # Clean up containers and data
+```
+
+### 🛳️ Docker Deployment
+All services use host network mode for optimal performance and simplicity:
+```bash
+# Start all services (databases + web UI + API)
+docker-compose up -d
+
+# View running services
+docker-compose ps
+
+# View logs
+docker-compose logs -f
+
+# Stop all services
+docker-compose down
+```
+
+### 🐍 Virtual Environment Setup
+```bash
+# Create and setup virtual environment
+make venv-setup
+
+# Activate virtual environment
+source venv/bin/activate
+
+# Start databases and run application
+make start
+make web-ui  # or make api-server
 ```
 
 ### 🛠️ Manual Installation
@@ -210,6 +245,38 @@ Launch with: `make api-server` or `python web/api_server.py`
 - **Adaptive strategy selection** - Chooses optimal strategy based on query complexity
 - **Error recovery** - Multiple attempts, learns from errors
 - **Cache optimization** - Intelligent caching for faster responses
+
+## 🐳 Deployment Architecture
+
+### Docker with Host Network Mode
+All services are configured to use **host network mode** for optimal performance:
+
+```yaml
+# docker-compose.yml configuration
+services:
+  webui:
+    network_mode: host  # Direct host network access
+  api:
+    network_mode: host  # No port mapping needed
+  postgres:
+    network_mode: host  # Runs on localhost:5432
+  mysql:
+    network_mode: host  # Runs on localhost:3307
+```
+
+**Benefits of Host Network Mode:**
+- ✅ **Better Performance** - No network translation overhead
+- ✅ **Simpler Configuration** - No complex port mappings
+- ✅ **Direct Access** - Services accessible on localhost
+- ✅ **Database Compatibility** - Works seamlessly with local Ollama
+
+### Virtual Environment Option
+For development and testing, use Python virtual environment:
+```bash
+make venv-setup      # Creates isolated Python environment
+source venv/bin/activate  # Activate the environment
+make web-ui          # All commands use venv automatically
+```
 
 ## 🏗️ Project Structure
 

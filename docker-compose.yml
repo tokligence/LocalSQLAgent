@@ -1,4 +1,38 @@
 services:
+  # Web UI Service
+  webui:
+    build:
+      context: .
+      target: webui
+    container_name: localsqlagent-webui
+    network_mode: host
+    volumes:
+      - ./src:/app/src
+      - ./web:/app/web
+    environment:
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - postgres
+      - mysql
+      - mongodb
+
+  # API Server Service
+  api:
+    build:
+      context: .
+      target: api
+    container_name: localsqlagent-api
+    network_mode: host
+    volumes:
+      - ./src:/app/src
+      - ./web:/app/web
+    environment:
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - postgres
+      - mysql
+      - mongodb
+
   postgres:
     image: postgres:15
     container_name: text2sql-postgres
@@ -6,13 +40,12 @@ services:
       POSTGRES_USER: text2sql
       POSTGRES_PASSWORD: text2sql123
       POSTGRES_DB: benchmark
-    ports:
-      - "5432:5432"
+    network_mode: host
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./data/init/postgres:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U text2sql"]
+      test: ["CMD-SHELL", "pg_isready -h localhost -U text2sql"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -25,14 +58,14 @@ services:
       MYSQL_USER: text2sql
       MYSQL_PASSWORD: text2sql123
       MYSQL_DATABASE: benchmark
-    ports:
-      - "3307:3306"  # 改为3307避免端口冲突
+      MYSQL_TCP_PORT: 3307  # Use port 3307 to avoid conflicts
+    network_mode: host
     volumes:
       - mysql_data:/var/lib/mysql
       - ./data/init/mysql:/docker-entrypoint-initdb.d
-    command: --default-authentication-plugin=mysql_native_password
+    command: --default-authentication-plugin=mysql_native_password --port=3307
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-P", "3307"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -44,9 +77,7 @@ services:
       CLICKHOUSE_USER: text2sql
       CLICKHOUSE_PASSWORD: text2sql123
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
-    ports:
-      - "8123:8123"
-      - "9000:9000"
+    network_mode: host
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - ./data/init/clickhouse:/docker-entrypoint-initdb.d
@@ -62,8 +93,7 @@ services:
       MONGO_INITDB_ROOT_USERNAME: text2sql
       MONGO_INITDB_ROOT_PASSWORD: text2sql123
       MONGO_INITDB_DATABASE: benchmark
-    ports:
-      - "27017:27017"
+    network_mode: host
     volumes:
       - mongodb_data:/data/db
       - ./data/init/mongodb:/docker-entrypoint-initdb.d
