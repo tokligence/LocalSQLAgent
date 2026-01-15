@@ -9,6 +9,7 @@ import os
 import requests
 import time
 from typing import Dict, Any
+import pytest
 
 # Add src to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -17,28 +18,39 @@ from src.core.intelligent_agent import IntelligentSQLAgent, ExecutionStrategy
 from src.core.schema_discovery import MCPSchemaProvider, DatabaseIntrospectionProvider
 
 
+MCP_BASE_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8080")
+
+
+def _skip_if_mcp_unavailable():
+    try:
+        response = requests.get(f"{MCP_BASE_URL}/health", timeout=2)
+        if response.status_code != 200:
+            pytest.skip(f"MCP server returned {response.status_code}")
+    except requests.exceptions.RequestException as e:
+        pytest.skip(f"MCP server unavailable: {e}")
+
+
+def _skip_if_db_unavailable(db_config: Dict[str, Any]):
+    provider = DatabaseIntrospectionProvider("postgresql", db_config)
+    if not provider.validate_connection():
+        pytest.skip("Database not available for MCP integration tests")
+
+
 def test_mcp_connection():
     """Test basic MCP server connection"""
     print("=" * 60)
     print("Testing MCP Server Connection")
     print("=" * 60)
 
-    try:
-        response = requests.get("http://localhost:8080/health", timeout=2)
-        if response.status_code == 200:
-            health = response.json()
-            print(f"✓ MCP Server is {health['status']}")
-            print(f"  Database: {health['database']}")
-            return True
-        else:
-            print(f"✗ MCP Server returned status {response.status_code}")
-            return False
-    except requests.exceptions.RequestException as e:
-        print(f"✗ Cannot connect to MCP server: {e}")
-        print("\n请先启动MCP服务器:")
-        print("  cd /Users/tonyseah/personal/pg_mcp")
-        print("  ./start_mcp.sh")
-        return False
+    _skip_if_mcp_unavailable()
+
+    response = requests.get(f"{MCP_BASE_URL}/health", timeout=2)
+    assert response.status_code == 200
+
+    health = response.json()
+    assert "status" in health
+    print(f"✓ MCP Server is {health['status']}")
+    print(f"  Database: {health.get('database', 'unknown')}")
 
 
 def test_mcp_schema_provider():
@@ -47,30 +59,24 @@ def test_mcp_schema_provider():
     print("Testing MCP Schema Provider")
     print("=" * 60)
 
-    provider = MCPSchemaProvider("http://localhost:8080")
+    _skip_if_mcp_unavailable()
+
+    provider = MCPSchemaProvider(MCP_BASE_URL)
 
     # Test connection validation
-    if provider.validate_connection():
-        print("✓ MCP provider connection validated")
-    else:
-        print("✗ MCP provider connection failed")
-        return False
+    assert provider.validate_connection()
+    print("✓ MCP provider connection validated")
 
     # Test schema retrieval
-    try:
-        schema = provider.get_schema()
-        print(f"✓ Retrieved schema: {schema.database_name}")
-        print(f"  Source: {schema.source.value}")
-        print(f"  Tables: {len(schema.tables)}")
+    schema = provider.get_schema()
+    assert schema.tables
+    print(f"✓ Retrieved schema: {schema.database_name}")
+    print(f"  Source: {schema.source.value}")
+    print(f"  Tables: {len(schema.tables)}")
 
-        # Show first few tables
-        for i, (table_name, table_info) in enumerate(list(schema.tables.items())[:3]):
-            print(f"    {i+1}. {table_name}: {len(table_info.columns)} columns")
-
-        return True
-    except Exception as e:
-        print(f"✗ Failed to get schema: {e}")
-        return False
+    # Show first few tables
+    for i, (table_name, table_info) in enumerate(list(schema.tables.items())[:3]):
+        print(f"    {i+1}. {table_name}: {len(table_info.columns)} columns")
 
 
 def test_intelligent_agent_with_mcp():
@@ -89,10 +95,13 @@ def test_intelligent_agent_with_mcp():
         "database": "test_ecommerce"
     }
 
+    _skip_if_mcp_unavailable()
+    _skip_if_db_unavailable(db_config)
+
     agent = IntelligentSQLAgent(
         model_name="qwen2.5-coder:7b",
         db_config=db_config,
-        mcp_server="http://localhost:8080",  # Use MCP for schema
+        mcp_server=MCP_BASE_URL,  # Use MCP for schema
         max_attempts=3
     )
 
@@ -117,7 +126,7 @@ def test_intelligent_agent_with_mcp():
         else:
             print(f"✗ 失败: {result.error}")
 
-    return success_count == len(test_queries)
+    assert success_count == len(test_queries)
 
 
 def test_schema_fallback():
@@ -136,6 +145,8 @@ def test_schema_fallback():
     }
 
     # Test with invalid MCP server (should fallback)
+    _skip_if_db_unavailable(db_config)
+
     agent = IntelligentSQLAgent(
         model_name="qwen2.5-coder:7b",
         db_config=db_config,
@@ -151,10 +162,10 @@ def test_schema_fallback():
         print(f"✓ Fallback successful")
         print(f"  Schema source: {schema_source}")
         print(f"  Expected: database (introspection)")
-        return schema_source == "database"
-    else:
-        print("✗ No schema information available")
-        return False
+        assert schema_source == "database"
+
+    print("✗ No schema information available")
+    pytest.fail("No schema information available")
 
 
 def compare_performance():
