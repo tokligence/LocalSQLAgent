@@ -300,10 +300,8 @@ python benchmarks/sql_benchmark.py --model ollama:deepseek-coder:6.7b
 - 新数据库适配器
 - 更多Ollama模型测试
 - 企业级功能需求
-
-加入我们的社区：
-- 💬 [Discord讨论组](https://discord.gg/localsqlagent)
-- 🐦 [Twitter更新](https://twitter.com/localsqlagent)
+- 性能优化建议
+- 文档改进
 
 ## 📄 许可证
 
