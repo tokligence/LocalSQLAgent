@@ -1,12 +1,14 @@
 # 🚀 LocalSQLAgent - 本地化智能Text-to-SQL代理系统
 
-[![100% Local](https://img.shields.io/badge/Deployment-100%25_Local-success)](https://github.com/pkusnail/text2sql2026)
-[![Zero API Cost](https://img.shields.io/badge/API_Cost-$0-green)](https://github.com/pkusnail/text2sql2026)
-[![Model Size](https://img.shields.io/badge/Model-7B-blue)](https://github.com/pkusnail/text2sql2026)
+[![100% Local](https://img.shields.io/badge/Deployment-100%25_Local-success)](https://github.com/pkusnail/LocalSQLAgent)
+[![Zero API Cost](https://img.shields.io/badge/API_Cost-$0-green)](https://github.com/pkusnail/LocalSQLAgent)
+[![Model Size](https://img.shields.io/badge/Model-7B-blue)](https://github.com/pkusnail/LocalSQLAgent)
 [![Powered by Ollama](https://img.shields.io/badge/Powered_by-Ollama-orange)](https://ollama.com)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
-> 🎯 **使用7B本地模型实现100% SQL准确率** - 无需任何API费用，数据100%本地处理！
+> 🎯 **使用7B本地模型达到75%+ SQL准确率** - 通过智能重试策略可进一步提升，无需任何API费用！
+
+中文文档 | [English](README_EN.md)
 
 ## 🏗️ 部署架构对比
 
@@ -36,7 +38,7 @@
 │                              ▼                         ▼             │
 │                    ┌──────────────────┐     ┌──────────────────┐   │
 │                    │  模糊检测模块     │     │  多次尝试策略     │   │
-│                    │  <15%误报率       │     │  25%→100%准确率   │   │
+│                    │  <15%误报率       │     │  显著提升准确率   │   │
 │                    └──────────────────┘     └──────────────────┘   │
 │                              │                         │             │
 │                              └────────┬────────────────┘             │
@@ -52,7 +54,7 @@
 │     │  PostgreSQL │ MySQL │ MongoDB │ ClickHouse │ SQLite  │        │
 │     └──────────────────────────────────────────────────────┘        │
 │                                                                      │
-│  优势：💰 $0成本  🔒 100%隐私  ⚡ 1-3秒响应  ✅ 100%准确率         │
+│  优势：💰 $0成本  🔒 100%隐私  ⚡ 1-3秒响应  📈 75%+准确率         │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -107,7 +109,8 @@ graph LR
 硬件需求：普通笔记本电脑（8GB RAM）
 模型大小：7B参数（4GB磁盘空间）
 响应时间：1-3秒
-准确率：100%（通过智能重试）
+基础准确率：75%（SQL），41.7%（MongoDB）
+通过智能重试：准确率可显著提升
 并发支持：10+ QPS
 ```
 
@@ -119,17 +122,32 @@ graph LR
 
 ## 🚀 快速开始（2分钟本地部署）
 
-### ⚡ 一键启动
+### ⚡ 使用Makefile一键启动（推荐）
 ```bash
 # 1. 克隆项目
 git clone https://github.com/pkusnail/LocalSQLAgent.git
 cd LocalSQLAgent
 
-# 2. 安装Ollama（如未安装）
+# 2. 一键安装和启动
+make start        # 自动安装Ollama、下载模型、启动数据库
+make quick-start  # 运行演示
+
+# 其他有用命令
+make help         # 查看所有可用命令
+make benchmark    # 运行完整基准测试
+make clean        # 清理所有容器和数据
+```
+
+### 🛠️ 手动安装（如需自定义）
+```bash
+# 1. 安装Ollama
 curl -fsSL https://ollama.com/install.sh | sh
 
-# 3. 下载模型（仅需4GB，一次下载永久使用）
+# 2. 下载模型（仅需4GB，一次下载永久使用）
 ollama pull qwen2.5-coder:7b
+
+# 3. 启动数据库（可选）
+docker-compose up -d
 
 # 4. 安装依赖并运行
 pip install -r requirements.txt
@@ -275,13 +293,12 @@ python benchmarks/sql_benchmark.py --model ollama:deepseek-coder:6.7b
 4. **🏠 纯本地运行** - 使用Ollama实现完全本地化部署
 5. **💰 零成本运营** - 无任何API调用费用，一次部署永久使用
 
-## 📈 真实用户反馈
+## 📈 核心优势
 
-> "终于有一个Text2SQL工具不需要烧钱了！用Ollama跑本地模型，效果竟然比GPT-4还好。" - **HackerNews用户**
-
-> "在我们公司，数据隐私是红线。LocalSQLAgent让我们能在完全离线环境使用AI查询。" - **某金融企业DBA**
-
-> "7B模型能达到100%准确率？我一开始不信，直到看到它的多次尝试策略。太聪明了！" - **Reddit r/LocalLLaMA**
+- **零成本运行** - 使用Ollama本地模型，无需支付API费用
+- **数据隐私保护** - 所有数据处理都在本地完成，适合敏感数据场景
+- **离线可用** - 不依赖互联网连接，可在隔离环境运行
+- **快速响应** - 本地推理延迟低，1-3秒即可生成SQL
 
 ## 🚀 路线图
 
