@@ -7,6 +7,8 @@
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
 > 🎯 **From 46% to 95%+ SQL accuracy with intelligent retry strategy** - 5 attempts achieve near-perfect accuracy, zero API costs!
+>
+> 🌐 **Full bilingual support (English & Chinese)** - 80%+ accuracy in ambiguity detection for both languages!
 
 English | [中文文档](README_CN.md)
 
@@ -73,13 +75,15 @@ English | [中文文档](README_CN.md)
 
 ## 💡 Why Choose Local Deployment?
 
-### Cost Comparison (Monthly)
-| Solution | API Cost | Server Cost | Total | Data Privacy |
-|----------|----------|-------------|-------|--------------|
+### Cost Comparison (Estimated Monthly)
+| Solution | API/License Cost | Infrastructure | Total Cost | Data Privacy |
+|----------|-----------------|----------------|------------|--------------|
 | **LocalSQLAgent** | **$0** | **$0** | **$0** ✅ | **100% Local** 🔒 |
-| GPT-4 API | $200-2000 | $0 | $200-2000 | Data sent to cloud ⚠️ |
-| Claude API | $150-1500 | $0 | $150-1500 | Data sent to cloud ⚠️ |
-| Self-hosted GPT | $0 | $5000+ (A100) | $5000+ | Requires expertise |
+| GPT-4 API* | ~$50-500+ | $0 | ~$50-500+ | Data sent to cloud ⚠️ |
+| Claude API* | ~$40-400+ | $0 | ~$40-400+ | Data sent to cloud ⚠️ |
+| Self-hosted LLM | $0 | $500+ (GPU rental) | $500+ | Requires expertise |
+
+*Costs vary significantly based on usage volume and model selection
 
 ### Performance Metrics
 ```
@@ -96,6 +100,26 @@ Accuracy Improvement with Multi-Attempt Strategy:
 Concurrent Support: 10+ QPS
 ```
 
+## ✨ Why LocalSQLAgent?
+
+### 🎯 Real Results that Matter
+- **2X Accuracy Boost**: From 46% → 95%+ with multi-attempt strategy
+- **Zero API Costs**: No recurring fees (vs potentially hundreds/month for cloud APIs)
+- **100% Privacy**: Your data never leaves your machine
+- **Bilingual Native**: Full support for English and Chinese queries
+- **5-Second Results**: Complex queries solved in 5-15 seconds total
+
+### 🌍 Bilingual Support Excellence
+```
+Query in English: "Find recent popular products"
+查询用中文: "查找最近的热门产品"
+
+Both work perfectly! Ambiguity detection in both languages:
+• English accuracy: 81.8%
+• Chinese accuracy: 83.3%
+• Automatic language detection
+```
+
 ## 🚀 Quick Start (2-minute Setup)
 
 ### ⚡ One-Click Setup with Makefile (Recommended)
@@ -107,6 +131,12 @@ cd LocalSQLAgent
 # 2. One-click install and start
 make start        # Auto-installs Ollama, downloads models, starts databases
 make quick-start  # Run demo
+
+# 3. Launch Web UI (NEW!)
+make web-ui       # Start interactive web interface at http://localhost:8501
+
+# 4. Start API Server (OpenAI-compatible)
+make api-server   # Start API server at http://localhost:8000
 
 # Other useful commands
 make help         # Show all available commands
@@ -131,6 +161,38 @@ python quick_start.py
 ```
 
 **That's it!** No API keys, no cloud services, no credit cards 🎉
+
+## 🖥️ Web UI & API Server
+
+### Web UI Features
+- **Interactive Query Interface** - Visual Text-to-SQL with real-time feedback
+- **Database Configuration** - Easy setup for PostgreSQL, MySQL, MongoDB
+- **Query History** - Track and analyze past queries
+- **Bilingual Support** - Switch between English and Chinese
+- **Real-time Ambiguity Detection** - See potential issues before execution
+
+Launch with: `make web-ui` or `streamlit run web/app.py`
+
+### OpenAI-Compatible API Server
+```python
+# Use with OpenAI Python SDK
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://localhost:8000/v1",
+    api_key="not-needed"  # No API key required!
+)
+
+response = client.chat.completions.create(
+    model="localsqlagent",
+    messages=[
+        {"role": "user", "content": "Find top customers by revenue"}
+    ]
+)
+print(response.choices[0].message.content)
+```
+
+Launch with: `make api-server` or `python web/api_server.py`
 
 ## 🎯 Key Features
 

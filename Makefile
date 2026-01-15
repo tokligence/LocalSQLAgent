@@ -17,13 +17,15 @@ help:
 	@echo "  make setup-db       - Start all databases with Docker"
 	@echo "  make start          - Start everything (Ollama + DBs)"
 	@echo "  make stop           - Stop all services"
+	@echo "  make web-ui         - Launch interactive Web UI (port 8501)"
+	@echo "  make api-server     - Start OpenAI-compatible API (port 8000)"
 	@echo "  make test           - Run all tests"
 	@echo "  make quick-start    - Run quick start demo"
 	@echo "  make benchmark      - Run full benchmark tests"
 	@echo "  make clean          - Clean up containers and volumes"
 	@echo ""
 	@echo "Quick start:"
-	@echo "  make start && make quick-start"
+	@echo "  make start && make web-ui"
 
 # Install Python dependencies
 install:
@@ -83,6 +85,22 @@ stop:
 quick-start: install
 	@echo "🎯 Running quick start demo..."
 	python quick_start.py
+
+# Launch Web UI
+web-ui: install
+	@echo "🌐 Launching Web UI..."
+	@echo "📍 Opening at http://localhost:8501"
+	@echo ""
+	@pip install streamlit flask flask-cors pymongo 2>/dev/null || true
+	streamlit run web/app.py
+
+# Start API Server
+api-server: install
+	@echo "🔌 Starting OpenAI-Compatible API Server..."
+	@echo "📍 API endpoint: http://localhost:8000"
+	@echo ""
+	@pip install flask flask-cors 2>/dev/null || true
+	python web/api_server.py
 
 # Run benchmarks
 benchmark: install
