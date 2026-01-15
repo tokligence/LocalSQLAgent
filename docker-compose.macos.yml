@@ -68,7 +68,7 @@ services:
       MYSQL_PASSWORD: text2sql123
       MYSQL_DATABASE: benchmark
     ports:
-      - "3307:3306"  # Map to 3307 on host to avoid conflicts
+      - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./data/init/mysql:/docker-entrypoint-initdb.d

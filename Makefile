@@ -84,7 +84,7 @@ start: setup-ollama setup-db
 	@echo ""
 	@echo "Databases running at:"
 	@echo "  PostgreSQL: localhost:5432"
-	@echo "  MySQL:      localhost:3307"
+	@echo "  MySQL:      localhost:3306"
 	@echo "  MongoDB:    localhost:27017"
 	@echo "  ClickHouse: localhost:8123"
 	@echo ""

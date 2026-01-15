@@ -334,7 +334,7 @@ if 'db_configs' not in st.session_state:
         'mysql': {
             'type': 'mysql',
             'host': default_db_host,
-            'port': 3307,
+            'port': 3306,
             'database': 'benchmark',
             'user': 'text2sql',
             'password': 'text2sql123',

@@ -44,7 +44,7 @@ export POSTGRES_PASSWORD=text2sql123
 export POSTGRES_DB=benchmark
 
 export MYSQL_HOST=localhost
-export MYSQL_PORT=3307
+export MYSQL_PORT=3306
 export MYSQL_USER=text2sql
 export MYSQL_PASSWORD=text2sql123
 export MYSQL_DATABASE=benchmark

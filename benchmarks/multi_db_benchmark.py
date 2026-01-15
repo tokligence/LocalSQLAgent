@@ -169,7 +169,7 @@ class DatabaseConnector:
         if 'mysql' not in self.connections:
             self.connections['mysql'] = pymysql.connect(
                 host='localhost',
-                port=3307,
+                port=3306,
                 user='text2sql',
                 password='text2sql123',
                 database='benchmark'

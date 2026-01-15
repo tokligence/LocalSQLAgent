@@ -38,7 +38,7 @@ psql -h localhost -p 5432 -U text2sql -d benchmark
 # Password: text2sql123
 
 # Test MySQL
-mysql -h 127.0.0.1 -P 3307 -u text2sql -p benchmark
+mysql -h 127.0.0.1 -P 3306 -u text2sql -p benchmark
 # Password: text2sql123
 ```
 
@@ -58,7 +58,7 @@ streamlit run web/app.py
 - **Web UI**: http://localhost:8501
 - **API Server**: http://localhost:8711
 - **PostgreSQL**: localhost:5432
-- **MySQL**: localhost:3307 (note: 3307, not 3306)
+- **MySQL**: localhost:3306
 - **MongoDB**: localhost:27017
 - **ClickHouse**: localhost:8123
 
@@ -83,7 +83,7 @@ When using the Web UI or API, use these connection settings:
 {
   "type": "mysql",
   "host": "localhost",
-  "port": 3307,
+  "port": 3306,
   "database": "benchmark",
   "user": "text2sql",
   "password": "text2sql123"

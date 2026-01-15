@@ -13,7 +13,7 @@ from src.core.schema_discovery import DatabaseIntrospectionProvider
 def _mysql_config():
     return {
         "host": os.getenv("MYSQL_HOST", "localhost"),
-        "port": int(os.getenv("MYSQL_PORT", "3307")),
+        "port": int(os.getenv("MYSQL_PORT", "3306")),
         "user": os.getenv("MYSQL_USER", "text2sql"),
         "password": os.getenv("MYSQL_PASSWORD", "text2sql123"),
         "database": os.getenv("MYSQL_DATABASE", "benchmark")

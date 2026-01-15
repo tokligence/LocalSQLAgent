@@ -62,7 +62,7 @@ Dataset: Spider dev (first 100 samples). Model: `qwen2.5-coder:7b` (Ollama). Sto
 | 5 | 85% | 4% | 3.97s | 1.66 |
 | 7 | 85% | 4% | 4.79s | 1.94 |
 
-**Docker (local image tag `text2sql2026-api`)**
+**Docker (local image tag `localsqlagent-api`)**
 | Max Attempts | Exec Accuracy | Exact Match | Avg Latency | Avg Attempts |
 |--------------|---------------|-------------|-------------|--------------|
 | 1 | 84% | 3% | 2.56s | 1.00 |
@@ -385,7 +385,7 @@ services:
   postgres:
     network_mode: host  # Runs on localhost:5432
   mysql:
-    network_mode: host  # Runs on localhost:3307
+    network_mode: host  # Runs on localhost:3306
 ```
 
 **Benefits of Host Network Mode:**
