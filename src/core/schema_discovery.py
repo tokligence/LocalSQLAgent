@@ -13,6 +13,8 @@ from enum import Enum
 import psycopg2
 import pymysql
 import clickhouse_connect
+import sqlite3
+import os
 
 
 class SchemaSourceType(Enum):
@@ -230,6 +232,9 @@ class DatabaseIntrospectionProvider(SchemaProvider):
     def _quote_mysql_ident(self, name: str) -> str:
         return f"`{str(name).replace('`', '``')}`"
 
+    def _quote_sqlite_ident(self, name: str) -> str:
+        return '"' + str(name).replace('"', '""') + '"'
+
     def _connect(self):
         """Establish database connection"""
         if self.db_type == "postgresql":
@@ -238,6 +243,11 @@ class DatabaseIntrospectionProvider(SchemaProvider):
             self.connection = pymysql.connect(**self.connection_params)
         elif self.db_type == "clickhouse":
             self.connection = clickhouse_connect.get_client(**self.connection_params)
+        elif self.db_type == "sqlite":
+            db_path = self.connection_params.get("database") or self.connection_params.get("path")
+            if not db_path:
+                raise ValueError("SQLite requires 'database' (file path) in connection params")
+            self.connection = sqlite3.connect(db_path)
         else:
             raise ValueError(f"Unsupported database type: {self.db_type}")
 
@@ -254,7 +264,7 @@ class DatabaseIntrospectionProvider(SchemaProvider):
         """Validate database connection"""
         try:
             self._connect()
-            if self.db_type in ["postgresql", "mysql"]:
+            if self.db_type in ["postgresql", "mysql", "sqlite"]:
                 cursor = self.connection.cursor()
                 cursor.execute("SELECT 1")
                 cursor.close()
@@ -282,6 +292,8 @@ class DatabaseIntrospectionProvider(SchemaProvider):
                 tables = self._get_mysql_schema()
             elif self.db_type == "clickhouse":
                 tables = self._get_clickhouse_schema()
+            elif self.db_type == "sqlite":
+                tables = self._get_sqlite_schema()
 
             self.last_error = None
             metadata = {
@@ -292,8 +304,11 @@ class DatabaseIntrospectionProvider(SchemaProvider):
                 "row_count_strategy": self.introspection_options.get("row_count_strategy", "approx"),
                 "sample_rows": self.introspection_options.get("sample_rows", 0),
             }
+            database_name = self.connection_params.get("database", "unknown")
+            if self.db_type == "sqlite" and database_name:
+                database_name = os.path.basename(database_name)
             return SchemaInfo(
-                database_name=self.connection_params.get("database", "unknown"),
+                database_name=database_name,
                 tables=tables,
                 source=SchemaSourceType.DATABASE_INTROSPECTION,
                 metadata=metadata
@@ -657,6 +672,99 @@ class DatabaseIntrospectionProvider(SchemaProvider):
                     sample_data=sample_data
                 )
 
+        return tables
+
+    def _get_sqlite_schema(self) -> Dict[str, TableInfo]:
+        """Get SQLite schema via sqlite_master introspection."""
+        cursor = self.connection.cursor()
+        tables: Dict[str, TableInfo] = {}
+
+        include_samples = self.introspection_options.get("include_samples", False)
+        include_row_counts = self.introspection_options.get("include_row_counts", False)
+        sample_rows = self.introspection_options.get("sample_rows", 3)
+        row_count_strategy = self.introspection_options.get("row_count_strategy", "approx")
+        max_tables = self.introspection_options.get("max_tables", 0)
+        max_columns = self.introspection_options.get("max_columns", 0)
+
+        cursor.execute("""
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+            ORDER BY name
+        """)
+        table_names = [row[0] for row in cursor.fetchall()]
+        if max_tables:
+            table_names = table_names[:max_tables]
+
+        for table_name in table_names:
+            columns = []
+            cursor.execute(f"PRAGMA table_info({self._quote_sqlite_ident(table_name)})")
+            for col in cursor.fetchall():
+                col_name = col[1]
+                col_type = col[2] or "TEXT"
+                is_nullable = not bool(col[3])
+                is_primary_key = bool(col[5])
+                columns.append(ColumnInfo(
+                    name=col_name,
+                    data_type=col_type,
+                    is_nullable=is_nullable,
+                    is_primary_key=is_primary_key,
+                    is_foreign_key=False,
+                    foreign_key_ref=None
+                ))
+
+            if max_columns:
+                columns = columns[:max_columns]
+
+            # Foreign keys
+            fk_map = {}
+            cursor.execute(f"PRAGMA foreign_key_list({self._quote_sqlite_ident(table_name)})")
+            for fk in cursor.fetchall():
+                from_col = fk[3]
+                ref_table = fk[2]
+                ref_col = fk[4]
+                fk_map[from_col] = f"{ref_table}.{ref_col}"
+
+            for col in columns:
+                if col.name in fk_map:
+                    col.is_foreign_key = True
+                    col.foreign_key_ref = fk_map[col.name]
+
+            row_count = None
+            if include_row_counts:
+                if row_count_strategy == "approx":
+                    try:
+                        cursor.execute("SELECT stat FROM sqlite_stat1 WHERE tbl = ? LIMIT 1", (table_name,))
+                        stat_row = cursor.fetchone()
+                        if stat_row and stat_row[0]:
+                            row_count = int(str(stat_row[0]).split()[0])
+                    except Exception:
+                        row_count = None
+                else:
+                    cursor.execute(
+                        f"SELECT COUNT(*) FROM {self._quote_sqlite_ident(table_name)}"
+                    )
+                    row_count = int(cursor.fetchone()[0])
+
+            sample_data = None
+            if include_samples and sample_rows > 0:
+                cursor.execute(
+                    f"SELECT * FROM {self._quote_sqlite_ident(table_name)} LIMIT ?",
+                    (sample_rows,)
+                )
+                sample_rows_data = cursor.fetchall()
+                if sample_rows_data:
+                    col_names = [desc[0] for desc in cursor.description]
+                    sample_data = [dict(zip(col_names, row)) for row in sample_rows_data]
+
+            tables[table_name] = TableInfo(
+                name=table_name,
+                columns=columns,
+                row_count=row_count,
+                sample_data=sample_data
+            )
+
+        cursor.close()
         return tables
 
     def get_table_info(self, table_name: str) -> Optional[TableInfo]:

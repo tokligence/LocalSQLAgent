@@ -145,6 +145,18 @@ def chat_completions():
 
 def extract_db_config(messages: List[Dict], data: Dict) -> Dict:
     """Extract database configuration from messages"""
+    def normalize_host(config: Dict[str, Any]) -> Dict[str, Any]:
+        if not isinstance(config, dict):
+            return config
+
+        host = str(config.get("host", "")).strip()
+        if host in ("localhost", "127.0.0.1", ""):
+            env_host = os.getenv("DB_HOST", "").strip()
+            in_docker = os.path.exists("/.dockerenv") or os.getenv("DOCKERIZED") == "1"
+            if env_host and env_host not in ("localhost", "127.0.0.1") and in_docker:
+                config["host"] = env_host
+        return config
+
     if isinstance(data, dict) and data.get("db_config"):
         config = data["db_config"]
         if "port" in config:
@@ -152,7 +164,7 @@ def extract_db_config(messages: List[Dict], data: Dict) -> Dict:
                 config["port"] = int(config["port"])
             except Exception:
                 pass
-        return config
+        return normalize_host(config)
 
     # Look for database config in system message
     for msg in messages:
@@ -180,17 +192,17 @@ def extract_db_config(messages: List[Dict], data: Dict) -> Dict:
                 if 'port' in config:
                     config['port'] = int(config['port'])
 
-                return config
+                return normalize_host(config)
 
     # Default configuration
-    return {
+    return normalize_host({
         "type": "postgresql",
         "host": os.getenv("DB_HOST", "localhost"),
         "port": 5432,
         "database": "test",
         "user": "postgres",
         "password": "postgres"
-    }
+    })
 
 
 def extract_query_from_messages(messages: List[Dict]) -> Optional[str]:

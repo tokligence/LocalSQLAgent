@@ -25,6 +25,11 @@ sys.path.append(str(Path(__file__).parent.parent))
 from src.utils.logger import get_logger
 from src.config.llm_config import get_llm_config
 
+DEFAULT_SQLITE_PATH = os.getenv(
+    "SQLITE_DB_PATH",
+    str(Path("data/spider/database/academic/academic.sqlite"))
+)
+
 # Page configuration
 st.set_page_config(
     page_title="Tokligence LocalSQLAgent",
@@ -41,7 +46,7 @@ st.markdown("""
 :root {
     --bg: #f6f2ea;
     --panel: #ffffff;
-    --panel-muted: #fff7e8;
+    --panel-muted: #f2e4d2;
     --ink: #1b1b1b;
     --muted: #6b6f76;
     --accent: #ff6b35;
@@ -271,18 +276,39 @@ header {visibility: hidden;}
 }
 
 /* Streamlit overrides */
-.stButton > button {
+.stButton > button,
+div[data-testid="stFormSubmitButton"] button {
     font-size: 13px;
     padding: 8px 12px;
     border-radius: 10px;
-    border: 1px solid var(--line);
-    background: #fffdf9;
+    border: 1px solid var(--accent) !important;
+    background: var(--accent) !important;
+    color: #fff !important;
+}
+
+.stButton > button:hover,
+div[data-testid="stFormSubmitButton"] button:hover {
+    background: #ff7f50 !important;
+    color: #fff !important;
+    border-color: #ff7f50 !important;
 }
 
 .stTextInput > div > div > input {
     font-size: 14px;
     padding: 10px 12px;
     border-radius: 12px;
+    background: var(--panel-muted) !important;
+    border: 1px solid var(--line) !important;
+    color: var(--ink) !important;
+    box-shadow: none !important;
+}
+
+div[data-testid="stTextInput"],
+div[data-testid="stTextInput"] > div,
+div[data-testid="stTextInput"] > div > div {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
 }
 
 div[data-testid="stMetricValue"] {
@@ -292,6 +318,49 @@ div[data-testid="stMetricValue"] {
 .stAlert {
     padding: 8px 12px;
     font-size: 13px;
+}
+
+div[data-testid="stSpinner"],
+div[data-testid="stSpinner"] * ,
+div[role="status"] {
+    color: var(--ink) !important;
+    stroke: var(--ink) !important;
+    fill: var(--ink) !important;
+}
+
+div[data-testid="stDownloadButton"] button {
+    border: 1px solid var(--accent) !important;
+    background: var(--accent) !important;
+    color: #fff !important;
+}
+
+div[data-testid="stDownloadButton"] button:hover {
+    border-color: #ff7f50 !important;
+    background: #ff7f50 !important;
+    color: #fff !important;
+}
+
+div[data-testid="stDownloadButton"] a,
+div[data-testid="stDownloadButton"] a * {
+    color: #fff !important;
+    background: var(--accent) !important;
+}
+
+div[data-testid="stForm"],
+div[data-testid="stForm"] > div {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+}
+
+form {
+    background: transparent !important;
+    border: none !important;
+}
+
+div[data-testid="stDataFrame"] button[aria-label*="Download"] {
+    display: none !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -348,12 +417,22 @@ if 'db_configs' not in st.session_state:
             'user': 'text2sql',
             'password': 'text2sql123',
             'enabled': False
+        },
+        'sqlite': {
+            'type': 'sqlite',
+            'database': DEFAULT_SQLITE_PATH,
+            'host': '',
+            'port': 0,
+            'user': '',
+            'password': '',
+            'schemas': '',
+            'enabled': False
         }
     }
 
 if 'api_config' not in st.session_state:
     st.session_state.api_config = {
-        "base_url": "http://localhost:8711"
+        "base_url": os.getenv("API_BASE_URL", "http://localhost:8711")
     }
 
 if 'execution_policy' not in st.session_state:
@@ -605,10 +684,10 @@ def render_message(msg: Dict):
                         st.dataframe(df, use_container_width=True, height=display_height)
 
                         # Download option (only if DataFrame was created successfully)
-                        csv = df.to_csv(index=False)
+                        csv_bytes = df.to_csv(index=False).encode("utf-8")
                         st.download_button(
                             label="📥 Download CSV",
-                            data=csv,
+                            data=csv_bytes,
                             file_name=f"query_result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                             mime="text/csv",
                             key=f"download_{msg.get('timestamp', '')}",
@@ -724,96 +803,100 @@ def execute_query_improved(query: str, target_dbs: Optional[List[str]] = None):
     pending = st.session_state.conversation_state.get("pending_clarifications", {})
 
     try:
-        for db_key in target_dbs:
-            config = st.session_state.db_configs.get(db_key)
-            if not config:
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": f"❌ Unknown database: {db_key}",
-                    "timestamp": datetime.now().isoformat()
-                })
-                continue
+        with st.spinner("Running query..."):
+            for db_key in target_dbs:
+                config = st.session_state.db_configs.get(db_key)
+                if not config:
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": f"❌ Unknown database: {db_key}",
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    continue
 
-            if not config.get("enabled", False):
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": f"❌ {db_key} is disabled in settings",
-                    "timestamp": datetime.now().isoformat()
-                })
-                continue
+                if not config.get("enabled", False):
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": f"❌ {db_key} is disabled in settings",
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    continue
 
-            db_connection_config = {k: v for k, v in config.items() if k != "enabled"}
-            schema_payload = dict(schema_options) if schema_options else {}
-            if config.get("schemas"):
-                schema_payload["schemas"] = config.get("schemas")
-            response = call_api(
-                query,
-                db_connection_config,
-                execution_policy,
-                schema_options=schema_payload if schema_payload else None,
-                query_mode=query_mode
-            )
+                db_connection_config = {k: v for k, v in config.items() if k != "enabled"}
+                if config.get("type") == "sqlite":
+                    for key in ("host", "port", "user", "password", "schemas"):
+                        db_connection_config.pop(key, None)
+                schema_payload = dict(schema_options) if schema_options else {}
+                if config.get("schemas"):
+                    schema_payload["schemas"] = config.get("schemas")
+                response = call_api(
+                    query,
+                    db_connection_config,
+                    execution_policy,
+                    schema_options=schema_payload if schema_payload else None,
+                    query_mode=query_mode
+                )
 
-            if response.get("type") == "clarification":
-                clarifications = response.get("clarifications", [])
-                if clarifications:
-                    prompt = clarifications[0]
-                    options = prompt.get("options", [])
-                    base_message = f"🤔 {prompt.get('keyword', 'Clarification needed')}: {', '.join(options[:3])}"
-                else:
-                    base_message = "🤔 Clarification needed. Please provide more details."
+                if response.get("type") == "clarification":
+                    clarifications = response.get("clarifications", [])
+                    if clarifications:
+                        prompt = clarifications[0]
+                        options = prompt.get("options", [])
+                        base_message = f"🤔 {prompt.get('keyword', 'Clarification needed')}: {', '.join(options[:3])}"
+                    else:
+                        base_message = "🤔 Clarification needed. Please provide more details."
 
-                if len(target_dbs) > 1:
-                    message = f"{base_message} Reply with '{db_key}: <answer>'"
-                else:
-                    message = base_message
+                    if len(target_dbs) > 1:
+                        message = f"{base_message} Reply with '{db_key}: <answer>'"
+                    else:
+                        message = base_message
 
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": message,
-                    "db_label": db_key,
-                    "timestamp": datetime.now().isoformat()
-                })
-                pending[db_key] = {"original_query": query}
-                continue
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": message,
+                        "db_label": db_key,
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    pending[db_key] = {"original_query": query}
+                    continue
 
-            if response.get("type") == "schema_overview" and response.get("success"):
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "type": "schema_overview",
-                    "success": True,
-                    "schema": response.get("schema"),
-                    "db_label": db_key,
-                    "timestamp": datetime.now().isoformat()
-                })
-                continue
+                if response.get("type") == "schema_overview" and response.get("success"):
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "type": "schema_overview",
+                        "success": True,
+                        "schema": response.get("schema"),
+                        "db_label": db_key,
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    continue
 
-            if response.get("type") == "sql_result" and response.get("success"):
+                if response.get("type") == "sql_result" and response.get("success"):
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "type": "sql_result",
+                        "success": True,
+                        "sql": response.get("sql"),
+                        "data": response.get("data"),
+                        "columns": response.get("columns"),
+                        "row_count": response.get("row_count", 0),
+                        "execution_time": response.get("execution_time"),
+                        "attempts": response.get("attempts", 1),
+                        "results": response.get("results"),
+                        "affected_rows": response.get("affected_rows"),
+                        "db_label": db_key,
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    continue
+
                 st.session_state.messages.append({
                     "role": "assistant",
                     "type": "sql_result",
-                    "success": True,
-                    "sql": response.get("sql"),
-                    "data": response.get("data"),
-                    "columns": response.get("columns"),
-                    "row_count": response.get("row_count", 0),
-                    "execution_time": response.get("execution_time"),
-                    "attempts": response.get("attempts", 1),
-                    "results": response.get("results"),
-                    "affected_rows": response.get("affected_rows"),
+                    "success": False,
+                    "error": response.get("error", "Query execution failed"),
                     "db_label": db_key,
                     "timestamp": datetime.now().isoformat()
                 })
-                continue
-
-            st.session_state.messages.append({
-                "role": "assistant",
-                "type": "sql_result",
-                "success": False,
-                "error": response.get("error", "Query execution failed"),
-                "db_label": db_key,
-                "timestamp": datetime.now().isoformat()
-            })
 
         st.session_state.conversation_state["pending_clarifications"] = pending
 
@@ -863,10 +946,15 @@ def render_sidebar():
                 st.session_state.current_db = selected_dbs[0]
                 for db_key in selected_dbs:
                     config = st.session_state.db_configs[db_key]
+                    if config.get("type") == "sqlite":
+                        st.caption(f"📁 {db_key}: {config.get('database', '')}")
+                        continue
                     schema_hint = ""
                     if config.get("schemas"):
                         schema_hint = f" | schemas: {config.get('schemas')}"
-                    st.caption(f"📡 {db_key}: {config['host']}:{config['port']}/{config['database']}{schema_hint}")
+                    st.caption(
+                        f"📡 {db_key}: {config.get('host', '')}:{config.get('port', '')}/{config.get('database', '')}{schema_hint}"
+                    )
             else:
                 st.warning("Select at least one database to run queries.")
         else:
@@ -908,35 +996,51 @@ def render_sidebar():
                 # Add new database
                 st.markdown("**New Database Configuration**")
                 new_db_name = st.text_input("Database Name", placeholder="e.g., mydb")
-                new_db_type = st.selectbox("Database Type", ["postgresql", "mysql", "clickhouse"])
+                new_db_type = st.selectbox("Database Type", ["postgresql", "mysql", "clickhouse", "sqlite"])
 
                 if new_db_name and new_db_name not in st.session_state.db_configs:
-                    new_host = st.text_input("Host", value="localhost")
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        new_port = st.number_input("Port", value=5432 if new_db_type == "postgresql" else 3306)
-                    with col2:
-                        new_database = st.text_input("Database Name", value="benchmark")
+                    if new_db_type == "sqlite":
+                        new_database = st.text_input("SQLite File", value=DEFAULT_SQLITE_PATH)
+                        if st.button("➕ Add Database", use_container_width=True):
+                            st.session_state.db_configs[new_db_name] = {
+                                'type': new_db_type,
+                                'database': new_database,
+                                'host': '',
+                                'port': 0,
+                                'user': '',
+                                'password': '',
+                                'schemas': '',
+                                'enabled': False
+                            }
+                            st.success(f"✅ Added {new_db_name} database!")
+                            st.rerun()
+                    else:
+                        new_host = st.text_input("Host", value="localhost")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            new_port = st.number_input("Port", value=5432 if new_db_type == "postgresql" else 3306)
+                        with col2:
+                            new_database = st.text_input("Database Name", value="benchmark")
 
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        new_user = st.text_input("Username", value="user")
-                    with col2:
-                        new_password = st.text_input("Password", type="password", value="")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            new_user = st.text_input("Username", value="user")
+                        with col2:
+                            new_password = st.text_input("Password", type="password", value="")
 
-                    if st.button("➕ Add Database", use_container_width=True):
-                        st.session_state.db_configs[new_db_name] = {
-                            'type': new_db_type,
-                            'host': new_host,
-                            'port': new_port,
-                            'database': new_database,
-                            'user': new_user,
-                            'password': new_password,
-                            'schemas': '',
-                            'enabled': False
-                        }
-                        st.success(f"✅ Added {new_db_name} database!")
-                        st.rerun()
+                        if st.button("➕ Add Database", use_container_width=True):
+                            st.session_state.db_configs[new_db_name] = {
+                                'type': new_db_type,
+                                'host': new_host,
+                                'port': new_port,
+                                'database': new_database,
+                                'user': new_user,
+                                'password': new_password,
+                                'schemas': '',
+                                'enabled': False
+                            }
+                            st.success(f"✅ Added {new_db_name} database!")
+                            st.rerun()
             else:
                 # Edit existing database
                 config = st.session_state.db_configs[selected_db]
@@ -946,31 +1050,43 @@ def render_sidebar():
                 st.text_input("Database Type", value=config['type'], disabled=True)
 
                 # Connection settings
-                config['host'] = st.text_input("Host", value=config['host'], key=f"{selected_db}_host")
+                if config['type'] == "sqlite":
+                    config.setdefault('host', '')
+                    config.setdefault('port', 0)
+                    config.setdefault('user', '')
+                    config.setdefault('password', '')
+                    config['database'] = st.text_input(
+                        "SQLite File",
+                        value=config.get('database', ''),
+                        key=f"{selected_db}_database"
+                    )
+                    config['schemas'] = ''
+                else:
+                    config['host'] = st.text_input("Host", value=config['host'], key=f"{selected_db}_host")
 
-                col1, col2 = st.columns(2)
-                with col1:
-                    config['port'] = st.number_input("Port", value=config['port'], key=f"{selected_db}_port")
-                with col2:
-                    config['database'] = st.text_input("Database", value=config['database'], key=f"{selected_db}_database")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        config['port'] = st.number_input("Port", value=config['port'], key=f"{selected_db}_port")
+                    with col2:
+                        config['database'] = st.text_input("Database", value=config['database'], key=f"{selected_db}_database")
 
-                schema_label = "Schemas (comma-separated)"
-                schema_help = "Optional. Use * for all non-system schemas."
-                if config['type'] in ("mysql", "clickhouse"):
-                    schema_label = "Databases (comma-separated)"
-                    schema_help = "Optional. Leave empty to use the database above."
-                config['schemas'] = st.text_input(
-                    schema_label,
-                    value=config.get('schemas', ''),
-                    key=f"{selected_db}_schemas",
-                    help=schema_help
-                )
+                    schema_label = "Schemas (comma-separated)"
+                    schema_help = "Optional. Use * for all non-system schemas."
+                    if config['type'] in ("mysql", "clickhouse"):
+                        schema_label = "Databases (comma-separated)"
+                        schema_help = "Optional. Leave empty to use the database above."
+                    config['schemas'] = st.text_input(
+                        schema_label,
+                        value=config.get('schemas', ''),
+                        key=f"{selected_db}_schemas",
+                        help=schema_help
+                    )
 
-                col1, col2 = st.columns(2)
-                with col1:
-                    config['user'] = st.text_input("Username", value=config['user'], key=f"{selected_db}_user")
-                with col2:
-                    config['password'] = st.text_input("Password", type="password", value=config['password'], key=f"{selected_db}_password")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        config['user'] = st.text_input("Username", value=config['user'], key=f"{selected_db}_user")
+                    with col2:
+                        config['password'] = st.text_input("Password", type="password", value=config['password'], key=f"{selected_db}_password")
 
                 # Enable/Disable toggle
                 config['enabled'] = st.checkbox("Enable this database", value=config.get('enabled', False), key=f"{selected_db}_enabled")
@@ -1014,6 +1130,17 @@ def render_sidebar():
                                 )
                                 client.query("SELECT 1")
                                 client.close()
+                                st.success("✅ Connection successful!")
+                            elif config['type'] == 'sqlite':
+                                import sqlite3
+                                db_path = config.get('database', '')
+                                if not db_path:
+                                    raise ValueError("SQLite file path is required")
+                                if not os.path.exists(db_path):
+                                    raise FileNotFoundError(f"SQLite file not found: {db_path}")
+                                conn = sqlite3.connect(db_path)
+                                conn.execute("SELECT 1")
+                                conn.close()
                                 st.success("✅ Connection successful!")
                             else:
                                 st.info("Connection test not implemented for this database type")
@@ -1213,8 +1340,8 @@ def main():
     # Clean header
     st.markdown("""
         <div class="hero">
-            <div class="hero-title">Tokligence SQL Studio</div>
-            <div class="hero-sub">Local LLMs with multi-database routing and safety rails.</div>
+            <div class="hero-title">Tokligence LocalSQLAgent</div>
+            <div class="hero-sub">Local LLM text-to-SQL agent. Data stays on your machine. Ask in natural language - no SQL required.</div>
         </div>
     """, unsafe_allow_html=True)
 

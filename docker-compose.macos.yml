@@ -16,6 +16,7 @@ services:
       - PYTHONUNBUFFERED=1
       - DB_HOST=host.docker.internal  # Use host.docker.internal on macOS
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - API_BASE_URL=http://host.docker.internal:8711
     depends_on:
       - postgres
       - mysql

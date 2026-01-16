@@ -546,6 +546,8 @@ class IntelligentSQLAgent:
             return "MySQL"
         if self.db_type == "clickhouse":
             return "ClickHouse"
+        if self.db_type == "sqlite":
+            return "SQLite"
         return self.db_type
 
     def _normalize_clickhouse_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -555,6 +557,36 @@ class IntelligentSQLAgent:
         if "database" not in normalized:
             normalized["database"] = "default"
         return normalized
+
+    def _get_connection_params(self) -> Dict[str, Any]:
+        """Filter db_config to only include connection parameters."""
+        if not isinstance(self.db_config, dict):
+            return {}
+        excluded = {
+            "type",
+            "execution_policy",
+            "read_only",
+            "allow_ddl",
+            "allow_dml",
+            "allow_admin",
+            "allow_multi_statement",
+            "default_limit",
+            "enforce_default_limit",
+            "schema_options",
+            "schema",
+            "schemas",
+            "include_samples",
+            "include_row_counts",
+            "sample_rows",
+            "row_count_strategy",
+            "max_tables",
+            "max_columns",
+            "temperature",
+            "llm_temperature",
+            "max_tokens",
+            "llm_max_tokens",
+        }
+        return {k: v for k, v in self.db_config.items() if k not in excluded}
 
     def _get_exploration_examples(self) -> List[str]:
         """Dialect-aware exploration examples"""
@@ -603,6 +635,12 @@ class IntelligentSQLAgent:
             return [
                 f"SELECT name, engine FROM system.tables WHERE {db_filter}",
                 f"SELECT 'table_name' AS table_name, COUNT(*) AS row_count FROM {databases[0]}.table_name",
+                "SELECT * FROM table_name LIMIT 5"
+            ]
+        if self.db_type == "sqlite":
+            return [
+                "SELECT name, type FROM sqlite_master WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%'",
+                "SELECT 'table_name' AS table_name, COUNT(*) AS row_count FROM table_name",
                 "SELECT * FROM table_name LIMIT 5"
             ]
         schemas = normalize_schema_list(self.db_config.get("schemas") or self.db_config.get("schema"))
@@ -951,11 +989,21 @@ class IntelligentSQLAgent:
 
         return best_result or ExecutionResult(
             success=False,
-            error="All attempts failed",
+            error=self._get_last_attempt_error(context) or "All attempts failed",
             attempts_count=len(context.attempts),
             strategy_used=ExecutionStrategy.EXPLORATORY,
             context=context
         )
+
+    def _get_last_attempt_error(self, context: QueryContext) -> Optional[str]:
+        """Return the most recent error from attempts for better diagnostics."""
+        if not context or not context.attempts:
+            return None
+        for attempt in reversed(context.attempts):
+            error = attempt.get("error")
+            if error:
+                return str(error)
+        return None
 
     def _generate_sql(self, query: str, schema: SchemaInfo) -> str:
         """Generate SQL from natural language using LLM"""
@@ -1403,7 +1451,7 @@ Corrected SQL Query (no explanations):"""
         client = None
         try:
             if self.db_type == 'postgresql':
-                conn_params = {k: v for k, v in self.db_config.items() if k != 'type'}
+                conn_params = self._get_connection_params()
                 conn = psycopg2.connect(**conn_params)
                 cursor = conn.cursor()
                 results = []
@@ -1461,7 +1509,7 @@ Corrected SQL Query (no explanations):"""
                 }
 
             if self.db_type == 'mysql':
-                conn_params = {k: v for k, v in self.db_config.items() if k != 'type'}
+                conn_params = self._get_connection_params()
                 conn = pymysql.connect(**conn_params)
                 cursor = conn.cursor()
                 results = []
@@ -1519,7 +1567,7 @@ Corrected SQL Query (no explanations):"""
                 }
 
             if self.db_type == 'clickhouse':
-                conn_params = {k: v for k, v in self.db_config.items() if k != 'type'}
+                conn_params = self._get_connection_params()
                 conn_params = self._normalize_clickhouse_params(conn_params)
                 client = clickhouse_connect.get_client(**conn_params)
                 results = []
@@ -1566,6 +1614,66 @@ Corrected SQL Query (no explanations):"""
                 return True, {
                     "results": results,
                     "row_count": total_rows
+                }
+
+            if self.db_type == 'sqlite':
+                import sqlite3
+                db_path = self.db_config.get("database") or self.db_config.get("path")
+                if not db_path:
+                    return False, "SQLite database path not provided"
+                conn = sqlite3.connect(db_path)
+                cursor = conn.cursor()
+                results = []
+                total_rows = 0
+                affected_rows = 0
+                has_write = False
+
+                for statement in prepared:
+                    is_read = statement["category"] == "read"
+                    cursor.execute(statement["sql"])
+                    if is_read:
+                        data = cursor.fetchall()
+                        columns = [desc[0] for desc in cursor.description] if cursor.description else []
+                        row_count = len(data)
+                        total_rows += row_count
+                        results.append({
+                            "sql": statement["sql"],
+                            "category": statement["category"],
+                            "data": data,
+                            "columns": columns,
+                            "row_count": row_count
+                        })
+                    else:
+                        has_write = True
+                        row_count = cursor.rowcount if cursor.rowcount is not None else 0
+                        affected_rows += max(row_count, 0)
+                        results.append({
+                            "sql": statement["sql"],
+                            "category": statement["category"],
+                            "row_count": row_count
+                        })
+
+                if has_write:
+                    conn.commit()
+
+                if len(results) == 1:
+                    if results[0]["category"] == "read":
+                        return True, {
+                            "data": results[0]["data"],
+                            "columns": results[0]["columns"],
+                            "row_count": results[0]["row_count"]
+                        }
+                    return True, {
+                        "data": [],
+                        "columns": [],
+                        "row_count": 0,
+                        "affected_rows": affected_rows
+                    }
+
+                return True, {
+                    "results": results,
+                    "row_count": total_rows,
+                    "affected_rows": affected_rows
                 }
 
             return False, f"Unsupported database type: {self.db_type}"
@@ -1624,6 +1732,12 @@ Corrected SQL Query (no explanations):"""
             r'not null constraint',
             r'invalid input syntax',
             r'division by zero',
+            r'no such table',
+            r'no such column',
+            r'no such function',
+            r'ambiguous column name',
+            r'misuse of aggregate',
+            r'unable to open database file',
         ]
 
         # Check if error contains any safe pattern
