@@ -172,14 +172,13 @@ agent = IntelligentSQLAgent(
 )
 ```
 
-## 💰 Cost Comparison
+## 💰 Solution Comparison
 
-| Solution | Monthly Cost | Data Privacy | Setup Time |
-|----------|--------------|--------------|------------|
-| **LocalSQLAgent** | **$0** | ✅ 100% Local | 5 minutes |
-| GPT-4 API | Pay per use | ⚠️ Cloud | 30 minutes |
-| Claude API | Pay per use | ⚠️ Cloud | 30 minutes |
-| Self-hosted GPU | GPU rental fees | ✅ Local | Days |
+| Solution | Cost Model | Data Privacy | Setup Time |
+|----------|------------|--------------|------------|
+| **LocalSQLAgent** | **Free Forever** | ✅ 100% Local | 5 minutes |
+| Cloud APIs | Usage-based billing | ⚠️ Data leaves premises | 30 minutes |
+| Self-hosted GPU | Infrastructure costs | ✅ Local | Days-Weeks |
 
 ## 🤝 Contributing
 
