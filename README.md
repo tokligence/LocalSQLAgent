@@ -71,18 +71,26 @@ Using the IntelligentSQLAgent with enhanced error learning and semantic understa
 ### 📚 Important Lesson: Domain-Specific Models Beat Larger General Models
 
 **Model Comparison on Spider (50 samples)**
-| Model | Type | Size | Exec Accuracy | Avg Latency | Issues |
-|-------|------|------|---------------|-------------|---------|
-| **qwen2.5-coder:7b** | Domain-specific (code) | 7B | **86.00%** | **5.41s** | ✅ Best overall |
-| gpt-oss:20b | General purpose | 20B | 90.00% | 20.83s | ⚠️ 4x slower, JSON errors |
-| qwen2.5:14b | General purpose | 14B | 82.00% | 10.02s | ❌ Worse accuracy, 2x slower |
+| Model | Type | Params | Disk Size | RAM Usage | Exec Accuracy | Avg Latency | Notes |
+|-------|------|--------|-----------|-----------|---------------|-------------|-------|
+| **qwen2.5-coder:7b** | Domain-specific (code) | 7B | 4.7 GB | ~6 GB | **86.00%** | **5.41s** | ✅ Best overall |
+| gpt-oss:20b | General purpose | 20B | 13 GB | ~16 GB | 90.00% | 20.83s | ⚠️ 4x slower, JSON errors |
+| qwen2.5:14b | General purpose | 14B | 9.0 GB | ~12 GB | 82.00% | 10.02s | ❌ Worse accuracy, 2x slower |
+| sqlcoder:7b | SQL-specific | 7B | 4.1 GB | ~5 GB | 2.00% | 2.92s | ❌ Failed - JSON/prompt issues |
+| sqlcoder:15b | SQL-specific | 15B | 9.0 GB | ~11 GB | 6.00% | 0.01s* | ❌ Failed - not compatible |
+| deepseek-coder-v2:16b | Domain-specific (code) | 16B | 8.9 GB | ~11 GB | **68.00%** | 4.04s | ✅ Good accuracy, slower than 7B |
+| mistral:7b-instruct | General purpose | 7B | 4.1 GB | ~5 GB | Pending | - | 📦 Downloaded, test pending |
+| mixtral:8x7b | MoE Architecture | 8x7B | 26 GB | ~30 GB | Pending | - | 📦 Downloaded, test pending |
+
+*Failed tests show artificially low latency as models weren't running properly
 
 **Key Lesson Learned**:
 - **Domain-specific models (like qwen2.5-coder) outperform larger general models for SQL tasks**
 - **Test Results Ranking**:
-  1. **qwen2.5-coder:7b** - Best balance: 86% accuracy, 5.41s latency, no errors
-  2. **gpt-oss:20b** - High accuracy (90%) but 4x slower (20.8s) with JSON errors
-  3. **qwen2.5:14b** - Worst performer: 82% accuracy, 10.02s latency
+  1. **gpt-oss:20b** - Highest accuracy (90%) but 4x slower (20.8s) with JSON errors
+  2. **qwen2.5-coder:7b** - Best balance: 86% accuracy, 5.41s latency, no errors
+  3. **qwen2.5:14b** - General model: 82% accuracy, 10.02s latency
+  4. **deepseek-coder-v2:16b** - Good performance: 68% accuracy, 4.04s latency
 
 - **Why larger models failed**:
   - gpt-oss:20b (20B params): 4x slower, JSON compliance issues, memory intensive
@@ -97,10 +105,17 @@ Using the IntelligentSQLAgent with enhanced error learning and semantic understa
 3. **Inference Overhead**: Larger model = slower inference without proportional accuracy gains
 4. **Context Understanding**: Struggles with database schema context compared to code-specific models
 
+**Why SQL-Specific Models (sqlcoder) Failed**:
+1. **Prompt Format Incompatibility**: sqlcoder models expect different prompt formats than our agent system
+2. **JSON Generation Issues**: Unable to generate structured JSON required by IntelligentSQLAgent
+3. **Outdated Training**: Older models may lack modern instruction-following capabilities
+4. **Agent Integration**: These models were designed for direct SQL generation, not agent-based systems
+
 **Recommendation**:
-- ✅ Use **domain-specific models** (qwen2.5-coder, deepseek-coder, codellama) for SQL tasks
+- ✅ Use **modern code-focused models** (qwen2.5-coder, deepseek-coder) for SQL tasks
+- ⚠️ Be cautious with **SQL-specific models** (sqlcoder) - they may not work with agent frameworks
 - ❌ Avoid **general conversational models** (gpt-oss, llama-chat) even if they have more parameters
-- 📊 Prioritize **training domain match** over raw parameter count
+- 📊 Prioritize **training domain match** AND **instruction-following capability**
 
 ### 🚀 Multi-Attempt Strategy Impact (Real Benchmark)
 Dataset: Spider dev (first 100 samples). Model: `qwen2.5-coder:7b` (Ollama). Stop-on-success enabled. Temperature: 0.0 (1 attempt), 0.2 (5/7 attempts).
