@@ -20,6 +20,8 @@ import argparse
 PROJECT_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
+from src.core.intelligent_agent import IntelligentSQLAgent, ExecutionPolicy
+
 
 @dataclass
 class BenchmarkResult:
@@ -31,6 +33,57 @@ class BenchmarkResult:
     attempts: int = 1
     error: Optional[str] = None
     latency: float = 0.0
+
+
+def _agent_cache_key(db_path: str, model_name: str, max_attempts: int, temperature: float) -> str:
+    return f"{db_path}|{model_name}|{max_attempts}|{temperature}"
+
+
+def _build_agent(
+    db_path: str,
+    model_name: str,
+    max_attempts: int,
+    temperature: float
+) -> IntelligentSQLAgent:
+    db_config = {
+        "type": "sqlite",
+        "database": db_path,
+        "temperature": temperature,
+        "read_only": True,
+        "allow_dml": False,
+        "allow_ddl": False,
+        "allow_admin": False,
+        "allow_multi_statement": True,
+        "default_limit": 0,
+        "enforce_default_limit": False,
+    }
+    policy = ExecutionPolicy(
+        read_only=True,
+        allow_dml=False,
+        allow_ddl=False,
+        allow_admin=False,
+        allow_multi_statement=True,
+        default_limit=0,
+        enforce_default_limit=False
+    )
+    return IntelligentSQLAgent(
+        model_name=model_name,
+        db_config=db_config,
+        max_attempts=max_attempts,
+        execution_policy=policy
+    )
+
+
+def _result_sql_fallback(result) -> str:
+    if result is None:
+        return ""
+    if result.sql:
+        return result.sql
+    context = getattr(result, "context", None)
+    if context and context.attempts:
+        last_attempt = context.attempts[-1]
+        return last_attempt.get("sql", "") or ""
+    return ""
 
 
 class Text2SQLModel:
@@ -333,7 +386,9 @@ class SpiderBenchmark:
         limit: int = None,
         max_attempts: int = 1,
         temperature: float = 0.0,
-        stop_on_success: bool = True
+        stop_on_success: bool = True,
+        use_agent: bool = False,
+        agent_model_name: Optional[str] = None
     ) -> List[BenchmarkResult]:
         """运行评测"""
         results = []
@@ -342,6 +397,9 @@ class SpiderBenchmark:
 
         print(f"\nRunning Spider benchmark on {len(data)} samples...")
         print(f"Max attempts: {max_attempts} | Temperature: {temperature} | Stop on success: {stop_on_success}")
+
+        agent_cache: Dict[str, IntelligentSQLAgent] = {}
+        agent_name = agent_model_name or "qwen2.5-coder:7b"
 
         for item in tqdm(data):
             question = item['question']
@@ -356,6 +414,8 @@ class SpiderBenchmark:
             exact_match = False
             total_latency = 0.0
             attempts_used = 0
+            agent_success = None
+            agent_success = None
 
             gold_success, gold_result = self.execute_sql(db_id, gold_sql)
             if not gold_success:
@@ -371,38 +431,68 @@ class SpiderBenchmark:
                 ))
                 continue
 
-            for attempt in range(max_attempts):
-                attempts_used = attempt + 1
+            if use_agent:
+                db_path = self.get_db_path(db_id)
+                agent_key = _agent_cache_key(db_path, agent_name, max_attempts, temperature)
+                agent = agent_cache.get(agent_key)
+                if not agent:
+                    agent = _build_agent(db_path, agent_name, max_attempts, temperature)
+                    agent_cache[agent_key] = agent
+
                 start_time = time.time()
-                try:
-                    predicted_sql = model.generate_sql(question, schema, temperature=temperature)
-                    error = None
-                except Exception as e:
-                    predicted_sql = ""
-                    error = str(e)
-                latency = time.time() - start_time
-                total_latency += latency
+                result = agent.execute_query(question)
+                agent_success = result.success
+                latency = result.execution_time or (time.time() - start_time)
+                total_latency = latency
+                predicted_sql = _result_sql_fallback(result)
+                error = result.error
+                attempts_used = result.attempts_count or 1
+            else:
+                for attempt in range(max_attempts):
+                    attempts_used = attempt + 1
+                    start_time = time.time()
+                    try:
+                        predicted_sql = model.generate_sql(question, schema, temperature=temperature)
+                        error = None
+                    except Exception as e:
+                        predicted_sql = ""
+                        error = str(e)
+                    latency = time.time() - start_time
+                    total_latency += latency
 
-                # 执行匹配检查
-                exec_match = False
-                exact_match = False
-                if predicted_sql and not error:
-                    pred_success, pred_result = self.execute_sql(db_id, predicted_sql)
+                    # 执行匹配检查
+                    exec_match = False
+                    exact_match = False
+                    if predicted_sql and not error:
+                        pred_success, pred_result = self.execute_sql(db_id, predicted_sql)
 
-                    if pred_success:
-                        # 比较结果集（忽略顺序）
-                        try:
-                            exec_match = set(map(tuple, gold_result)) == set(map(tuple, pred_result))
-                        except Exception:
-                            exec_match = gold_result == pred_result
-                    else:
-                        error = f"Execution error: {pred_result}"
+                        if pred_success:
+                            # 比较结果集（忽略顺序）
+                            try:
+                                exec_match = set(map(tuple, gold_result)) == set(map(tuple, pred_result))
+                            except Exception:
+                                exec_match = gold_result == pred_result
+                        else:
+                            error = f"Execution error: {pred_result}"
 
-                    # 精确匹配检查（简化版，实际应该用SQL解析器）
-                    exact_match = self._normalize_sql(predicted_sql) == self._normalize_sql(gold_sql)
+                        # 精确匹配检查（简化版，实际应该用SQL解析器）
+                        exact_match = self._normalize_sql(predicted_sql) == self._normalize_sql(gold_sql)
 
-                if stop_on_success and exec_match:
-                    break
+                    if stop_on_success and exec_match:
+                        break
+
+            if predicted_sql and not error:
+                pred_success, pred_result = self.execute_sql(db_id, predicted_sql)
+                if pred_success:
+                    try:
+                        exec_match = set(map(tuple, gold_result)) == set(map(tuple, pred_result))
+                    except Exception:
+                        exec_match = gold_result == pred_result
+                else:
+                    error = f"Execution error: {pred_result}"
+                exact_match = self._normalize_sql(predicted_sql) == self._normalize_sql(gold_sql)
+            elif agent_success is False and not error:
+                error = "Agent failed to generate SQL"
 
             results.append(BenchmarkResult(
                 question=question,
@@ -536,12 +626,17 @@ class BIRDBenchmark:
         limit: int = None,
         max_attempts: int = 1,
         temperature: float = 0.0,
-        stop_on_success: bool = True
+        stop_on_success: bool = True,
+        use_agent: bool = False,
+        agent_model_name: Optional[str] = None
     ) -> List[BenchmarkResult]:
         results = []
         data = self.dev_data[:limit] if limit else self.dev_data
         print(f"\nRunning BIRD benchmark on {len(data)} samples...")
         print(f"Max attempts: {max_attempts} | Temperature: {temperature} | Stop on success: {stop_on_success}")
+
+        agent_cache: Dict[str, IntelligentSQLAgent] = {}
+        agent_name = agent_model_name or "qwen2.5-coder:7b"
 
         for item in tqdm(data):
             question = self._field(item, ["question", "nl_question", "query"])
@@ -598,34 +693,63 @@ class BIRDBenchmark:
                 ))
                 continue
 
-            for attempt in range(max_attempts):
-                attempts_used = attempt + 1
+            if use_agent:
+                agent_key = _agent_cache_key(db_path, agent_name, max_attempts, temperature)
+                agent = agent_cache.get(agent_key)
+                if not agent:
+                    agent = _build_agent(db_path, agent_name, max_attempts, temperature)
+                    agent_cache[agent_key] = agent
+
                 start_time = time.time()
-                try:
-                    predicted_sql = model.generate_sql(question, schema, temperature=temperature)
-                    error = None
-                except Exception as e:
-                    predicted_sql = ""
-                    error = str(e)
-                latency = time.time() - start_time
-                total_latency += latency
+                result = agent.execute_query(question)
+                agent_success = result.success
+                latency = result.execution_time or (time.time() - start_time)
+                total_latency = latency
+                predicted_sql = _result_sql_fallback(result)
+                error = result.error
+                attempts_used = result.attempts_count or 1
+            else:
+                for attempt in range(max_attempts):
+                    attempts_used = attempt + 1
+                    start_time = time.time()
+                    try:
+                        predicted_sql = model.generate_sql(question, schema, temperature=temperature)
+                        error = None
+                    except Exception as e:
+                        predicted_sql = ""
+                        error = str(e)
+                    latency = time.time() - start_time
+                    total_latency += latency
 
-                exec_match = False
-                exact_match = False
-                if predicted_sql and not error:
-                    pred_success, pred_result = self.execute_sql(db_path, predicted_sql)
-                    if pred_success:
-                        try:
-                            exec_match = set(map(tuple, gold_result)) == set(map(tuple, pred_result))
-                        except Exception:
-                            exec_match = gold_result == pred_result
-                    else:
-                        error = f"Execution error: {pred_result}"
+                    exec_match = False
+                    exact_match = False
+                    if predicted_sql and not error:
+                        pred_success, pred_result = self.execute_sql(db_path, predicted_sql)
+                        if pred_success:
+                            try:
+                                exec_match = set(map(tuple, gold_result)) == set(map(tuple, pred_result))
+                            except Exception:
+                                exec_match = gold_result == pred_result
+                        else:
+                            error = f"Execution error: {pred_result}"
 
-                    exact_match = self._normalize_sql(predicted_sql) == self._normalize_sql(gold_sql)
+                        exact_match = self._normalize_sql(predicted_sql) == self._normalize_sql(gold_sql)
 
-                if stop_on_success and exec_match:
-                    break
+                    if stop_on_success and exec_match:
+                        break
+
+            if predicted_sql and not error:
+                pred_success, pred_result = self.execute_sql(db_path, predicted_sql)
+                if pred_success:
+                    try:
+                        exec_match = set(map(tuple, gold_result)) == set(map(tuple, pred_result))
+                    except Exception:
+                        exec_match = gold_result == pred_result
+                else:
+                    error = f"Execution error: {pred_result}"
+                exact_match = self._normalize_sql(predicted_sql) == self._normalize_sql(gold_sql)
+            elif agent_success is False and not error:
+                error = "Agent failed to generate SQL"
 
             results.append(BenchmarkResult(
                 question=question,
@@ -721,6 +845,8 @@ def main():
                         help='Sampling temperature for multi-attempt runs')
     parser.add_argument('--output', type=str, default=None,
                         help='Output file for detailed results')
+    parser.add_argument('--use-agent', action='store_true',
+                        help='Use IntelligentSQLAgent for generation/execution')
 
     args = parser.parse_args()
 
@@ -728,14 +854,18 @@ def main():
     data_dir = PROJECT_DIR / "data"
 
     # 初始化模型
-    print(f"\nInitializing model: {args.model} ({args.model_name})")
+    model = None
+    if args.use_agent:
+        print(f"\nUsing IntelligentSQLAgent ({args.model_name})")
+    else:
+        print(f"\nInitializing model: {args.model} ({args.model_name})")
 
-    if args.model == 'ollama':
-        model = OllamaModel(model_name=args.model_name, base_url=args.ollama_base_url)
-    elif args.model == 'vllm':
-        model = VLLMModel(model_name=args.model_name)
-    elif args.model == 'transformers':
-        model = TransformersModel(model_name=args.model_name)
+        if args.model == 'ollama':
+            model = OllamaModel(model_name=args.model_name, base_url=args.ollama_base_url)
+        elif args.model == 'vllm':
+            model = VLLMModel(model_name=args.model_name)
+        elif args.model == 'transformers':
+            model = TransformersModel(model_name=args.model_name)
 
     # 运行评测
     if args.benchmark == 'spider':
@@ -748,11 +878,15 @@ def main():
         limit=args.limit,
         max_attempts=args.max_attempts,
         temperature=args.temperature,
-        stop_on_success=True
+        stop_on_success=True,
+        use_agent=args.use_agent,
+        agent_model_name=args.model_name
     )
 
     # 输出结果
-    output_file = args.output or str(PROJECT_DIR / "results" / f"{args.benchmark}_{args.model_name.replace('/', '_')}_results.json")
+    model_tag = f"agent_{args.model_name.replace('/', '_')}" if args.use_agent else args.model_name.replace('/', '_')
+    model_tag = model_tag.replace(":", "_")
+    output_file = args.output or str(PROJECT_DIR / "results" / f"{args.benchmark}_{model_tag}_results.json")
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
     print_results(results, output_file)
 
