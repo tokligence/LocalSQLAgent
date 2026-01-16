@@ -79,7 +79,8 @@ Using the IntelligentSQLAgent with enhanced error learning and semantic understa
 | sqlcoder:7b | SQL-specific | 7B | 4.1 GB | ~5 GB | 2.00% | 2.92s | ❌ Failed - JSON/prompt issues |
 | sqlcoder:15b | SQL-specific | 15B | 9.0 GB | ~11 GB | 6.00% | 0.01s* | ❌ Failed - not compatible |
 | deepseek-coder-v2:16b | Domain-specific (code) | 16B | 8.9 GB | ~11 GB | **68.00%** | 4.04s | ✅ Good accuracy, slower than 7B |
-| mistral:7b-instruct | General purpose | 7B | 4.1 GB | ~5 GB | Pending | - | 📦 Downloaded, test pending |
+| **codestral:22b-v0.1-q4_0** | Domain-specific (code) | 22B | 12 GB | ~15 GB | **82.00%** | **30.59s** | ⚠️ Slow, decent accuracy |
+| mistral:7b-instruct | General purpose | 7B | 4.1 GB | ~5 GB | Failed | 31-39s* | ❌ JSON errors, extremely slow |
 | mixtral:8x7b | MoE Architecture | 8x7B | 26 GB | ~30 GB | Pending | - | 📦 Downloaded, test pending |
 
 *Failed tests show artificially low latency as models weren't running properly
@@ -89,13 +90,16 @@ Using the IntelligentSQLAgent with enhanced error learning and semantic understa
 - **Test Results Ranking**:
   1. **gpt-oss:20b** - Highest accuracy (90%) but 4x slower (20.8s) with JSON errors
   2. **qwen2.5-coder:7b** - Best balance: 86% accuracy, 5.41s latency, no errors
-  3. **qwen2.5:14b** - General model: 82% accuracy, 10.02s latency
-  4. **deepseek-coder-v2:16b** - Good performance: 68% accuracy, 4.04s latency
+  3. **codestral:22b** - Code-optimized: 82% accuracy but very slow (30.59s)
+  4. **qwen2.5:14b** - General model: 82% accuracy, 10.02s latency
+  5. **deepseek-coder-v2:16b** - Good performance: 68% accuracy, 4.04s latency
 
 - **Why larger models failed**:
   - gpt-oss:20b (20B params): 4x slower, JSON compliance issues, memory intensive
   - qwen2.5:14b (14B params): Lower accuracy than 7B coder model, 2x slower
-  - Both general-purpose models struggled with SQL-specific patterns
+  - codestral:22b (22B params): 6x slower than qwen2.5-coder, no accuracy improvement
+  - mistral:7b-instruct: JSON generation failures, extremely slow (31-39s/query)
+  - Larger model size ≠ better performance for specialized tasks
 
 - **The specialized training of qwen2.5-coder on code/SQL beats raw model size**
 
