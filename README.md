@@ -81,10 +81,12 @@ print(result)
 
 ### Recommended Model
 **✅ qwen2.5-coder:7b** - Best balance of accuracy, speed, and resource usage
-- **86% execution accuracy** on Spider benchmark
+- **86% execution accuracy** on Spider benchmark*
 - **5.4s** average response time
 - **4.7GB** disk space
 - **~6GB** RAM required
+
+*Tested on MacBook Pro (M-series, 48GB RAM) with Spider dev dataset (50 samples)
 
 ### Alternative Models Tested
 | Model | EA (%) | Speed | Verdict |
