@@ -2,11 +2,11 @@
 
 [![100% Local](https://img.shields.io/badge/Deployment-100%25_Local-success)](https://github.com/tokligence/LocalSQLAgent)
 [![Zero API Cost](https://img.shields.io/badge/API_Cost-$0-green)](https://github.com/tokligence/LocalSQLAgent)
-[![Accuracy](https://img.shields.io/badge/Accuracy-86%25-blue)](https://github.com/tokligence/LocalSQLAgent)
+[![Execution Accuracy](https://img.shields.io/badge/Execution_Accuracy-86%25-blue)](https://github.com/tokligence/LocalSQLAgent)
 [![Model Size](https://img.shields.io/badge/Model-4.7GB-orange)](https://github.com/tokligence/LocalSQLAgent)
 [![By Tokligence](https://img.shields.io/badge/By-Tokligence-4CAF50)](https://github.com/tokligence)
 
-> **🎯 86% accuracy on Spider benchmark** with zero API costs and 100% data privacy
+> **🎯 86% execution accuracy on Spider benchmark** with zero API costs and 100% data privacy
 >
 > **🌐 Bilingual support** - Works perfectly with English and Chinese queries
 
@@ -24,7 +24,7 @@ English | [中文文档](README_CN.md)
 - **✅ Zero Cost**: No API fees, ever
 - **🔒 100% Private**: Data never leaves your machine
 - **⚡ Fast**: 5-6 seconds average response time
-- **📊 Proven**: 86% accuracy on Spider benchmark
+- **📊 Proven**: 86% execution accuracy on Spider benchmark
 
 ## 🏗️ Architecture
 
@@ -43,7 +43,7 @@ English | [中文文档](README_CN.md)
 │                     │ PostgreSQL│MySQL│MongoDB│... │            │
 │                     └──────────────────────────────┘            │
 │                                                                   │
-│  💰 $0 Cost    🔒 100% Private    ⚡ 5.4s Avg    📊 86% Accuracy │
+│  💰 $0 Cost    🔒 100% Private    ⚡ 5.4s Avg    📊 86% EA      │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -81,13 +81,13 @@ print(result)
 
 ### Recommended Model
 **✅ qwen2.5-coder:7b** - Best balance of accuracy, speed, and resource usage
-- **86% accuracy** on Spider benchmark
+- **86% execution accuracy** on Spider benchmark
 - **5.4s** average response time
 - **4.7GB** disk space
 - **~6GB** RAM required
 
 ### Alternative Models Tested
-| Model | Accuracy | Speed | Verdict |
+| Model | EA (%) | Speed | Verdict |
 |-------|----------|-------|---------|
 | qwen2.5-coder:7b | 86% | 5.4s | ✅ **Best Choice** |
 | deepseek-coder-v2:16b | 68% | 4.0s | ✅ Good alternative |
@@ -129,17 +129,17 @@ result = agent.query("显示上个月销售前10的产品")
 ## 📈 Benchmarks
 
 ### Spider Dataset Results (50 samples)
-- **Execution Accuracy**: 86%
+- **Execution Accuracy (EA)**: 86%
 - **Average Latency**: 5.41s
 - **Average Attempts**: 2.5
 - **Success Rate**: 100% (with retries)
 
 ### Multi-Attempt Strategy
-| Attempts | Accuracy | Latency | Finding |
+| Attempts | EA (%) | Latency | Finding |
 |----------|----------|---------|---------|
 | 1 | 84% | 2.4s | Fast but may fail |
-| 5 | 85% | 4.0s | +1% accuracy |
-| 7 | 85% | 4.8s | No improvement |
+| 5 | 85% | 4.0s | +1% EA improvement |
+| 7 | 85% | 4.8s | No further gain |
 
 > **Recommendation**: Use 1-3 attempts for best speed/accuracy balance
 
