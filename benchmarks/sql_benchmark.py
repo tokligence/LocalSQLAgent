@@ -15,6 +15,8 @@ from typing import Optional, Dict, List, Tuple, Any
 from dataclasses import dataclass
 from tqdm import tqdm
 import argparse
+import re
+import sqlparse
 
 # 添加项目路径
 PROJECT_DIR = Path(__file__).parent.parent
@@ -84,6 +86,79 @@ def _result_sql_fallback(result) -> str:
         last_attempt = context.attempts[-1]
         return last_attempt.get("sql", "") or ""
     return ""
+
+
+def _split_sql_statements(sql: str) -> List[str]:
+    return [stmt.strip() for stmt in sqlparse.split(sql or "") if stmt.strip()]
+
+
+def _last_read_statement(sql: str) -> str:
+    statements = _split_sql_statements(sql)
+    last_read = ""
+    for stmt in statements:
+        prefix = stmt.lstrip().lower()
+        if prefix.startswith(("select", "with", "explain", "pragma", "show", "describe")):
+            last_read = stmt
+    return last_read or (statements[-1] if statements else "")
+
+
+def _extract_limit(sql: str) -> Optional[int]:
+    if not sql:
+        return None
+    match = re.search(r"\blimit\s+(\d+)\b", sql, re.IGNORECASE)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except Exception:
+        return None
+
+
+def _multiset(rows: List[Tuple[Any, ...]]) -> Dict[Tuple[Any, ...], int]:
+    from collections import Counter
+    return Counter(map(tuple, rows))
+
+
+def _normalize_column_name(name: str) -> str:
+    return re.sub(r"\s+", "", str(name).strip().lower())
+
+
+def _align_pred_rows(
+    gold_cols: Optional[List[str]],
+    pred_cols: Optional[List[str]],
+    pred_rows: List[Tuple[Any, ...]]
+) -> List[Tuple[Any, ...]]:
+    if not gold_cols or not pred_cols:
+        return pred_rows
+    norm_gold = [_normalize_column_name(col) for col in gold_cols]
+    norm_pred = [_normalize_column_name(col) for col in pred_cols]
+    if len(norm_gold) != len(norm_pred):
+        return pred_rows
+    if len(set(norm_gold)) != len(norm_gold) or len(set(norm_pred)) != len(norm_pred):
+        return pred_rows
+    if sorted(norm_gold) != sorted(norm_pred):
+        return pred_rows
+    index_map = {name: idx for idx, name in enumerate(norm_pred)}
+    order = [index_map[name] for name in norm_gold]
+    aligned = []
+    for row in pred_rows:
+        aligned.append(tuple(row[idx] for idx in order))
+    return aligned
+
+
+def _results_match(gold: List[Tuple[Any, ...]], pred: List[Tuple[Any, ...]], limit: Optional[int]) -> bool:
+    gold_counter = _multiset(gold)
+    pred_counter = _multiset(pred)
+
+    if limit is not None:
+        if sum(pred_counter.values()) > limit:
+            return False
+        for row, count in pred_counter.items():
+            if gold_counter.get(row, 0) < count:
+                return False
+        return True
+
+    return gold_counter == pred_counter
 
 
 class Text2SQLModel:
@@ -363,22 +438,33 @@ class SpiderBenchmark:
             db_path = self.data_dir / "spider" / "spider" / "database" / db_id / f"{db_id}.sqlite"
         return str(db_path)
 
-    def execute_sql(self, db_id: str, sql: str) -> Tuple[bool, any]:
-        """执行SQL并返回结果"""
+    def execute_sql(self, db_id: str, sql: str) -> Tuple[bool, Any, Optional[List[str]]]:
+        """执行SQL并返回最后一个查询结果 (支持多语句)"""
         db_path = self.get_db_path(db_id)
 
         if not os.path.exists(db_path):
-            return False, f"Database not found: {db_path}"
+            return False, f"Database not found: {db_path}", None
+
+        statements = _split_sql_statements(sql)
+        if not statements:
+            return False, "No SQL statement found", None
 
         try:
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
-            cursor.execute(sql)
-            result = cursor.fetchall()
+            last_result = None
+            last_columns = None
+            for stmt in statements:
+                cursor.execute(stmt)
+                if cursor.description:
+                    last_columns = [desc[0] for desc in cursor.description]
+                    last_result = cursor.fetchall()
             conn.close()
-            return True, result
+            if last_result is None:
+                return False, "No read result", None
+            return True, last_result, last_columns
         except Exception as e:
-            return False, str(e)
+            return False, str(e), None
 
     def run(
         self,
@@ -417,7 +503,7 @@ class SpiderBenchmark:
             agent_success = None
             agent_success = None
 
-            gold_success, gold_result = self.execute_sql(db_id, gold_sql)
+            gold_success, gold_result, gold_columns = self.execute_sql(db_id, gold_sql)
             if not gold_success:
                 results.append(BenchmarkResult(
                     question=question,
@@ -464,30 +550,29 @@ class SpiderBenchmark:
                     exec_match = False
                     exact_match = False
                     if predicted_sql and not error:
-                        pred_success, pred_result = self.execute_sql(db_id, predicted_sql)
+                        pred_success, pred_result, pred_columns = self.execute_sql(db_id, predicted_sql)
 
                         if pred_success:
-                            # 比较结果集（忽略顺序）
-                            try:
-                                exec_match = set(map(tuple, gold_result)) == set(map(tuple, pred_result))
-                            except Exception:
-                                exec_match = gold_result == pred_result
+                            last_pred_sql = _last_read_statement(predicted_sql)
+                            limit_value = _extract_limit(last_pred_sql)
+                            aligned_pred = _align_pred_rows(gold_columns, pred_columns, pred_result)
+                            exec_match = _results_match(gold_result, aligned_pred, limit_value)
                         else:
                             error = f"Execution error: {pred_result}"
 
                         # 精确匹配检查（简化版，实际应该用SQL解析器）
                         exact_match = self._normalize_sql(predicted_sql) == self._normalize_sql(gold_sql)
 
-                    if stop_on_success and exec_match:
-                        break
+                        if stop_on_success and exec_match:
+                            break
 
             if predicted_sql and not error:
-                pred_success, pred_result = self.execute_sql(db_id, predicted_sql)
+                pred_success, pred_result, pred_columns = self.execute_sql(db_id, predicted_sql)
                 if pred_success:
-                    try:
-                        exec_match = set(map(tuple, gold_result)) == set(map(tuple, pred_result))
-                    except Exception:
-                        exec_match = gold_result == pred_result
+                    last_pred_sql = _last_read_statement(predicted_sql)
+                    limit_value = _extract_limit(last_pred_sql)
+                    aligned_pred = _align_pred_rows(gold_columns, pred_columns, pred_result)
+                    exec_match = _results_match(gold_result, aligned_pred, limit_value)
                 else:
                     error = f"Execution error: {pred_result}"
                 exact_match = self._normalize_sql(predicted_sql) == self._normalize_sql(gold_sql)
@@ -602,16 +687,26 @@ class BIRDBenchmark:
                 return item[key]
         return None
 
-    def execute_sql(self, db_path: str, sql: str) -> Tuple[bool, Any]:
+    def execute_sql(self, db_path: str, sql: str) -> Tuple[bool, Any, Optional[List[str]]]:
         try:
+            statements = _split_sql_statements(sql)
+            if not statements:
+                return False, "No SQL statement found", None
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
-            cursor.execute(sql)
-            result = cursor.fetchall()
+            last_result = None
+            last_columns = None
+            for stmt in statements:
+                cursor.execute(stmt)
+                if cursor.description:
+                    last_columns = [desc[0] for desc in cursor.description]
+                    last_result = cursor.fetchall()
             conn.close()
-            return True, result
+            if last_result is None:
+                return False, "No read result", None
+            return True, last_result, last_columns
         except Exception as e:
-            return False, str(e)
+            return False, str(e), None
 
     def _normalize_sql(self, sql: str) -> str:
         import re
@@ -679,7 +774,7 @@ class BIRDBenchmark:
             total_latency = 0.0
             attempts_used = 0
 
-            gold_success, gold_result = self.execute_sql(db_path, gold_sql)
+            gold_success, gold_result, gold_columns = self.execute_sql(db_path, gold_sql)
             if not gold_success:
                 results.append(BenchmarkResult(
                     question=question,
@@ -723,28 +818,28 @@ class BIRDBenchmark:
 
                     exec_match = False
                     exact_match = False
-                    if predicted_sql and not error:
-                        pred_success, pred_result = self.execute_sql(db_path, predicted_sql)
-                        if pred_success:
-                            try:
-                                exec_match = set(map(tuple, gold_result)) == set(map(tuple, pred_result))
-                            except Exception:
-                                exec_match = gold_result == pred_result
-                        else:
-                            error = f"Execution error: {pred_result}"
+                if predicted_sql and not error:
+                    pred_success, pred_result, pred_columns = self.execute_sql(db_path, predicted_sql)
+                    if pred_success:
+                        last_pred_sql = _last_read_statement(predicted_sql)
+                        limit_value = _extract_limit(last_pred_sql)
+                        aligned_pred = _align_pred_rows(gold_columns, pred_columns, pred_result)
+                        exec_match = _results_match(gold_result, aligned_pred, limit_value)
+                    else:
+                        error = f"Execution error: {pred_result}"
 
-                        exact_match = self._normalize_sql(predicted_sql) == self._normalize_sql(gold_sql)
+                    exact_match = self._normalize_sql(predicted_sql) == self._normalize_sql(gold_sql)
 
                     if stop_on_success and exec_match:
                         break
 
             if predicted_sql and not error:
-                pred_success, pred_result = self.execute_sql(db_path, predicted_sql)
+                pred_success, pred_result, pred_columns = self.execute_sql(db_path, predicted_sql)
                 if pred_success:
-                    try:
-                        exec_match = set(map(tuple, gold_result)) == set(map(tuple, pred_result))
-                    except Exception:
-                        exec_match = gold_result == pred_result
+                    last_pred_sql = _last_read_statement(predicted_sql)
+                    limit_value = _extract_limit(last_pred_sql)
+                    aligned_pred = _align_pred_rows(gold_columns, pred_columns, pred_result)
+                    exec_match = _results_match(gold_result, aligned_pred, limit_value)
                 else:
                     error = f"Execution error: {pred_result}"
                 exact_match = self._normalize_sql(predicted_sql) == self._normalize_sql(gold_sql)
