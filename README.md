@@ -15,7 +15,7 @@ English | [中文文档](README_CN.md)
 ## 🔥 Why LocalSQLAgent?
 
 ### The Problem with Cloud Solutions
-- **💸 Expensive**: $200-2000/month for GPT-4/Claude APIs
+- **💸 Ongoing Costs**: Continuous API fees that scale with usage
 - **🔓 Privacy Risk**: Your sensitive data leaves your infrastructure
 - **🌐 Network Dependency**: Requires internet, adds latency
 - **🚫 Compliance Issues**: Many industries can't send data to cloud
@@ -177,9 +177,9 @@ agent = IntelligentSQLAgent(
 | Solution | Monthly Cost | Data Privacy | Setup Time |
 |----------|--------------|--------------|------------|
 | **LocalSQLAgent** | **$0** | ✅ 100% Local | 5 minutes |
-| GPT-4 API | $200-2000 | ⚠️ Cloud | 30 minutes |
-| Claude API | $150-1500 | ⚠️ Cloud | 30 minutes |
-| Self-hosted GPU | $500+ | ✅ Local | Days |
+| GPT-4 API | Pay per use | ⚠️ Cloud | 30 minutes |
+| Claude API | Pay per use | ⚠️ Cloud | 30 minutes |
+| Self-hosted GPU | GPU rental fees | ✅ Local | Days |
 
 ## 🤝 Contributing
 
@@ -197,4 +197,4 @@ Apache 2.0 - Free for commercial use
 
 ---
 
-**Ready to save thousands on AI costs?** Star ⭐ this repo and get started in 5 minutes!
+**Ready to eliminate API costs?** Star ⭐ this repo and get started in 5 minutes!
