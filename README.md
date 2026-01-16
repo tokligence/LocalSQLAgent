@@ -68,6 +68,36 @@ Using the IntelligentSQLAgent with enhanced error learning and semantic understa
 - **Smart error recovery**: Automatically classifies and fixes 7 types of SQL errors
 - **Better column understanding**: Distinguishes between column names and aggregate functions
 
+### 📚 Important Lesson: Domain-Specific Models Beat Larger General Models
+
+**Model Comparison on Spider (50 samples)**
+| Model | Type | Size | Exec Accuracy | Avg Latency | Issues |
+|-------|------|------|---------------|-------------|---------|
+| **qwen2.5-coder:7b** | Domain-specific (code) | 7B | **86.00%** | **5.41s** | ✅ Best overall |
+| gpt-oss:20b | General purpose | 20B | 90.00% | 20.83s | ⚠️ 4x slower, JSON errors |
+| qwen2.5:14b | General purpose | 14B | Testing... | Testing... | Testing... |
+
+**Key Lesson Learned**:
+- **Domain-specific models (like qwen2.5-coder) outperform larger general models for SQL tasks**
+- gpt-oss:20b achieved slightly higher accuracy (90% vs 86%) but at a massive cost:
+  - **4x slower**: 20.8s vs 5.4s per query - unacceptable for production use
+  - **JSON compliance issues**: 20+ failures generating validation queries ("Failed to generate validation queries via LLM")
+  - **Poor structured output**: Frequent "Expecting value: line 1 column 1" errors
+  - **Memory intensive**: 20B vs 7B parameters requires significantly more RAM
+  - **Not trained for code**: General conversational model struggles with SQL syntax
+- The specialized training of qwen2.5-coder on code/SQL makes it more efficient than raw model size
+
+**Why gpt-oss:20b Failed Despite Being Larger**:
+1. **Training Data Mismatch**: Trained on conversational data, not code/SQL
+2. **JSON Generation**: Unable to reliably generate structured JSON responses required by the agent
+3. **Inference Overhead**: Larger model = slower inference without proportional accuracy gains
+4. **Context Understanding**: Struggles with database schema context compared to code-specific models
+
+**Recommendation**:
+- ✅ Use **domain-specific models** (qwen2.5-coder, deepseek-coder, codellama) for SQL tasks
+- ❌ Avoid **general conversational models** (gpt-oss, llama-chat) even if they have more parameters
+- 📊 Prioritize **training domain match** over raw parameter count
+
 ### 🚀 Multi-Attempt Strategy Impact (Real Benchmark)
 Dataset: Spider dev (first 100 samples). Model: `qwen2.5-coder:7b` (Ollama). Stop-on-success enabled. Temperature: 0.0 (1 attempt), 0.2 (5/7 attempts).
 
