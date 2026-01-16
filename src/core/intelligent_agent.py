@@ -983,9 +983,14 @@ class IntelligentSQLAgent:
                     )
                     best_confidence = confidence
 
-                # Stop if high confidence achieved
-                if confidence > 0.9:
+                # Stop if high confidence achieved or early success for simple queries
+                has_failure = any(not a.get("success") for a in context.attempts)
+                difficulty = context.difficulty or QueryDifficulty.MODERATE
+                if confidence >= 0.9:
                     break
+                if not has_failure and difficulty in (QueryDifficulty.SIMPLE, QueryDifficulty.MODERATE):
+                    if confidence >= 0.85:
+                        break
 
         return best_result or ExecutionResult(
             success=False,
@@ -1315,10 +1320,11 @@ SQL Query (no explanations):"""
         attempts_info = "\nPrevious Attempts and Errors:\n"
         for i, attempt in enumerate(attempts, 1):
             sql = attempt.get('sql', 'Unknown')
-            error = attempt.get('error', 'Unknown error')
+            error = attempt.get('error')
+            error_text = str(error) if error is not None else "None"
             attempts_info += f"Attempt {i}:\n"
-            attempts_info += f"  SQL: {sql[:200]}\n"
-            attempts_info += f"  Error: {error[:200]}\n"
+            attempts_info += f"  SQL: {str(sql)[:200]}\n"
+            attempts_info += f"  Error: {error_text[:200]}\n"
 
         dialect = self._get_sql_dialect_name()
         prompt = f"""You are a SQL expert. Previous SQL attempts have failed. Learn from the errors and generate a correct {dialect} query.
@@ -1761,17 +1767,78 @@ Corrected SQL Query (no explanations):"""
 
     def _evaluate_result_quality(self, query: str, sql: str, result: Dict) -> float:
         """Evaluate quality of SQL result"""
-        # Would use LLM to assess if result answers the query
-        # Simplified scoring
-        if result.get("data"):
-            return 0.85
-        if result.get("results"):
-            for item in result.get("results", []):
-                if item.get("data"):
-                    return 0.85
-        if result.get("affected_rows"):
-            return 0.85
-        return 0.3
+        query_lower = (query or "").lower()
+        sql_lower = (sql or "").lower()
+
+        def has_any(tokens: List[str], text: str) -> bool:
+            return any(token in text for token in tokens)
+
+        row_count = result.get("row_count")
+        if row_count is None:
+            if result.get("data") is not None:
+                try:
+                    row_count = len(result.get("data"))
+                except Exception:
+                    row_count = None
+            elif result.get("results"):
+                try:
+                    row_count = sum(int(item.get("row_count", 0)) for item in result.get("results", []))
+                except Exception:
+                    row_count = None
+
+        score = 0.45
+        if result.get("data") is not None or result.get("results") is not None:
+            score += 0.15
+            if row_count == 0:
+                score -= 0.15
+            elif row_count == 1:
+                score += 0.15
+            elif row_count and row_count <= 20:
+                score += 0.12
+            elif row_count and row_count > 200:
+                score -= 0.05
+        elif result.get("affected_rows") is not None:
+            score += 0.2
+
+        agg_intent = has_any(
+            ["count", "how many", "number of", "total", "sum", "avg", "average", "max", "min"],
+            query_lower
+        )
+        if agg_intent:
+            if re.search(r"\b(count|sum|avg|average|max|min)\b", sql_lower):
+                score += 0.2
+            else:
+                score -= 0.1
+
+        distinct_intent = has_any(["distinct", "different", "unique"], query_lower)
+        if distinct_intent:
+            if "distinct" in sql_lower:
+                score += 0.1
+            else:
+                score -= 0.05
+
+        group_intent = has_any(["per ", "by ", "group by", "each "], query_lower)
+        if group_intent:
+            if "group by" in sql_lower:
+                score += 0.1
+            else:
+                score -= 0.05
+
+        order_intent = has_any(["top", "highest", "lowest", "most", "least", "largest", "smallest"], query_lower)
+        if order_intent:
+            if "order by" in sql_lower:
+                score += 0.08
+            else:
+                score -= 0.04
+
+        if has_any(["limit", "first", "latest", "recent"], query_lower) and "limit" in sql_lower:
+            score += 0.03
+
+        if has_any(["where", "after", "before", "between", "greater", "less", "above", "below"], query_lower) and "where" in sql_lower:
+            score += 0.05
+
+        score = max(0.0, min(0.99, score))
+        return score
 
     def get_execution_stats(self) -> Dict[str, Any]:
         """Get execution statistics"""
