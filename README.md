@@ -75,17 +75,21 @@ Using the IntelligentSQLAgent with enhanced error learning and semantic understa
 |-------|------|------|---------------|-------------|---------|
 | **qwen2.5-coder:7b** | Domain-specific (code) | 7B | **86.00%** | **5.41s** | ✅ Best overall |
 | gpt-oss:20b | General purpose | 20B | 90.00% | 20.83s | ⚠️ 4x slower, JSON errors |
-| qwen2.5:14b | General purpose | 14B | Testing... | Testing... | Testing... |
+| qwen2.5:14b | General purpose | 14B | 82.00% | 10.02s | ❌ Worse accuracy, 2x slower |
 
 **Key Lesson Learned**:
 - **Domain-specific models (like qwen2.5-coder) outperform larger general models for SQL tasks**
-- gpt-oss:20b achieved slightly higher accuracy (90% vs 86%) but at a massive cost:
-  - **4x slower**: 20.8s vs 5.4s per query - unacceptable for production use
-  - **JSON compliance issues**: 20+ failures generating validation queries ("Failed to generate validation queries via LLM")
-  - **Poor structured output**: Frequent "Expecting value: line 1 column 1" errors
-  - **Memory intensive**: 20B vs 7B parameters requires significantly more RAM
-  - **Not trained for code**: General conversational model struggles with SQL syntax
-- The specialized training of qwen2.5-coder on code/SQL makes it more efficient than raw model size
+- **Test Results Ranking**:
+  1. **qwen2.5-coder:7b** - Best balance: 86% accuracy, 5.41s latency, no errors
+  2. **gpt-oss:20b** - High accuracy (90%) but 4x slower (20.8s) with JSON errors
+  3. **qwen2.5:14b** - Worst performer: 82% accuracy, 10.02s latency
+
+- **Why larger models failed**:
+  - gpt-oss:20b (20B params): 4x slower, JSON compliance issues, memory intensive
+  - qwen2.5:14b (14B params): Lower accuracy than 7B coder model, 2x slower
+  - Both general-purpose models struggled with SQL-specific patterns
+
+- **The specialized training of qwen2.5-coder on code/SQL beats raw model size**
 
 **Why gpt-oss:20b Failed Despite Being Larger**:
 1. **Training Data Mismatch**: Trained on conversational data, not code/SQL
