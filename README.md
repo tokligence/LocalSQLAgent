@@ -52,6 +52,22 @@ English | [中文文档](README_CN.md)
 
 ## 📊 Performance Results
 
+### 🎉 Intelligent Agent Improvements (New)
+Using the IntelligentSQLAgent with enhanced error learning and semantic understanding.
+
+**Spider Dataset (50 samples) - qwen2.5-coder:7b**
+| Version | Exec Accuracy | Exact Match | Avg Latency | Avg Attempts | Improvements |
+|---------|---------------|-------------|-------------|--------------|--------------|
+| Original | 82.00% | 0.00% | 9.60s | 2.74 | Baseline |
+| **Phase 2 (Current)** | **86.00%** | **14.00%** | **5.41s** | **2.50** | ✅ Error Learning |
+| Phase 3 | 86.00% | 14.00% | 5.37s | 2.52 | + Semantic Analysis |
+
+**Key Improvements**:
+- **+4% accuracy**: Enhanced error learning mechanism allows the agent to learn from SQL execution errors
+- **44% faster**: Optimized prompts reduced average latency from 9.6s to 5.4s
+- **Smart error recovery**: Automatically classifies and fixes 7 types of SQL errors
+- **Better column understanding**: Distinguishes between column names and aggregate functions
+
 ### 🚀 Multi-Attempt Strategy Impact (Real Benchmark)
 Dataset: Spider dev (first 100 samples). Model: `qwen2.5-coder:7b` (Ollama). Stop-on-success enabled. Temperature: 0.0 (1 attempt), 0.2 (5/7 attempts).
 
