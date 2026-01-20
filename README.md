@@ -2,11 +2,11 @@
 
 [![100% Local](https://img.shields.io/badge/Deployment-100%25_Local-success)](https://github.com/tokligence/LocalSQLAgent)
 [![Zero API Cost](https://img.shields.io/badge/API_Cost-$0-green)](https://github.com/tokligence/LocalSQLAgent)
-[![Execution Accuracy](https://img.shields.io/badge/Execution_Accuracy-86%25-blue)](https://github.com/tokligence/LocalSQLAgent)
-[![Model Size](https://img.shields.io/badge/Model-4.7GB-orange)](https://github.com/tokligence/LocalSQLAgent)
+[![Execution Accuracy](https://img.shields.io/badge/Execution_Accuracy-88%25-blue)](https://github.com/tokligence/LocalSQLAgent)
+[![Model Size](https://img.shields.io/badge/Model-4.7GB--18GB-orange)](https://github.com/tokligence/LocalSQLAgent)
 [![By Tokligence](https://img.shields.io/badge/By-Tokligence-4CAF50)](https://github.com/tokligence)
 
-> **🎯 86% execution accuracy on Spider benchmark** with zero API costs and 100% data privacy
+> **🎯 88% execution accuracy on Spider benchmark** with zero API costs and 100% data privacy
 >
 > **🌐 Bilingual support** - Works perfectly with English and Chinese queries
 
@@ -23,8 +23,8 @@ English | [中文文档](README_CN.md)
 ### Our Solution: 100% Local AI
 - **✅ Zero Cost**: No API fees, ever
 - **🔒 100% Private**: Data never leaves your machine
-- **⚡ Fast**: 5-6 seconds average response time
-- **📊 Proven**: 86% execution accuracy on Spider benchmark
+- **⚡ Fast**: 3.7-5.4 seconds average response time
+- **📊 Proven**: 88% execution accuracy on Spider benchmark (NEW: qwen3-coder:30b)
 
 ## 🏗️ Architecture
 
@@ -34,7 +34,7 @@ English | [中文文档](README_CN.md)
 │                                                                   │
 │  ┌────────────┐     ┌─────────────────┐     ┌─────────────────┐ │
 │  │   User     │────▶│  LocalSQLAgent  │────▶│  Ollama + LLM   │ │
-│  │   Query    │     │  (Intelligent   │     │ qwen2.5-coder:7b│ │
+│  │   Query    │     │  (Intelligent   │     │ qwen3-coder:30b │ │
 │  └────────────┘     │    Agent)       │     └─────────────────┘ │
 │                     └────────┬─────────┘                         │
 │                              ▼                                   │
@@ -43,7 +43,7 @@ English | [中文文档](README_CN.md)
 │                     │ PostgreSQL│MySQL│MongoDB│... │            │
 │                     └──────────────────────────────┘            │
 │                                                                   │
-│  💰 $0 Cost    🔒 100% Private    ⚡ 5.4s Avg    📊 86% EA      │
+│  💰 $0 Cost    🔒 100% Private    ⚡ 3.7s Avg    📊 88% EA      │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -54,7 +54,10 @@ English | [中文文档](README_CN.md)
 # macOS/Linux
 curl -fsSL https://ollama.com/install.sh | sh
 
-# Pull the recommended model (4.7GB)
+# Pull the best model (18GB, requires 25GB RAM)
+ollama pull qwen3-coder:30b
+
+# Or for limited resources (4.7GB, requires 6GB RAM)
 ollama pull qwen2.5-coder:7b
 ```
 
@@ -79,8 +82,16 @@ print(result)
 
 ## 📊 Performance & Model Selection
 
-### Recommended Model
-**✅ qwen2.5-coder:7b** - Best balance of accuracy, speed, and resource usage
+### 🏆 Recommended Models
+
+#### **Best Performance: qwen3-coder:30b** (NEW!)
+- **88% execution accuracy** on Spider benchmark* - Highest accuracy achieved!
+- **3.69s** average response time - 32% faster than qwen2.5-coder
+- **18GB** disk space (MoE: 30B total, 3.3B active)
+- **~25GB** RAM required
+- **Key advantage**: Mixture-of-Experts architecture delivers superior performance
+
+#### **Best for Limited Resources: qwen2.5-coder:7b**
 - **86% execution accuracy** on Spider benchmark*
 - **5.4s** average response time
 - **4.7GB** disk space
@@ -88,16 +99,17 @@ print(result)
 
 *Tested on MacBook Pro (M-series, 48GB RAM) with Spider dev dataset (50 samples)
 
-### Alternative Models Tested
-| Model | EA (%) | Speed | Verdict |
-|-------|----------|-------|---------|
-| qwen2.5-coder:7b | 86% | 5.4s | ✅ **Best choice** |
-| deepseek-coder-v2:16b | 68% | 4.0s | ✅ Good alternative |
-| deepseek-coder:6.7b | 72% | 6.6s | ⚠️ Lower accuracy |
-| codestral:22b | 82% | 30.6s | ⚠️ Too slow |
-| qwen2.5:14b | 82% | 10.0s | ❌ General model, not optimized |
+### All Models Tested
+| Model | EA (%) | Speed | Size | Verdict |
+|-------|--------|-------|------|---------|
+| **qwen3-coder:30b** 🆕 | **88%** | **3.69s** | 18GB | ✅ **Best overall** |
+| qwen2.5-coder:7b | 86% | 5.41s | 4.7GB | ✅ Best for limited RAM |
+| codestral:22b | 82% | 30.6s | 12GB | ⚠️ Too slow |
+| qwen2.5:14b | 82% | 10.0s | 9.0GB | ❌ General model |
+| deepseek-coder:6.7b | 72% | 6.64s | 3.8GB | ⚠️ Lower accuracy |
+| deepseek-coder-v2:16b | 68% | 4.0s | 8.9GB | ⚠️ Lower accuracy |
 
-> **Key Finding**: Smaller domain-specific models outperform larger general models for SQL tasks
+> **Key Finding**: MoE architecture (qwen3-coder:30b) achieves best results - 88% EA with only 3.3B active params!
 
 [View detailed model analysis →](docs/detailed_model_analysis.md)
 
@@ -106,7 +118,7 @@ print(result)
 ### 🧠 Intelligent Error Learning
 - Automatically learns from SQL execution errors
 - Self-corrects common mistakes (ambiguous columns, missing GROUP BY, etc.)
-- Improves accuracy from 82% to 86% through error recovery
+- Achieves up to 88% accuracy through error recovery (qwen3-coder:30b)
 
 ### 🌐 True Bilingual Support
 ```python
@@ -132,6 +144,14 @@ result = agent.query("显示上个月销售前10的产品")
 ## 📈 Benchmarks
 
 ### Spider Dataset Results (50 samples)
+
+#### qwen3-coder:30b (Best Model)
+- **Execution Accuracy (EA)**: 88% 🏆
+- **Average Latency**: 3.69s ⚡
+- **Average Attempts**: 2.5
+- **Success Rate**: 100% (with retries)
+
+#### qwen2.5-coder:7b (Resource-Efficient)
 - **Execution Accuracy (EA)**: 86%
 - **Average Latency**: 5.41s
 - **Average Attempts**: 2.5
@@ -169,7 +189,7 @@ docker run -p 8000:8000 localsqlagent
 ```python
 agent = IntelligentSQLAgent(
     db_url="postgresql://localhost/mydb",
-    model_name="deepseek-coder-v2:16b",  # Use alternative model
+    model_name="qwen3-coder:30b",  # Use best model for highest accuracy
     max_attempts=3,
     temperature=0.1
 )

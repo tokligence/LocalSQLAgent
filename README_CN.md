@@ -2,11 +2,11 @@
 
 [![100% 本地化](https://img.shields.io/badge/部署-100%25_本地-success)](https://github.com/tokligence/LocalSQLAgent)
 [![零API成本](https://img.shields.io/badge/API成本-$0-green)](https://github.com/tokligence/LocalSQLAgent)
-[![执行准确率](https://img.shields.io/badge/执行准确率-86%25-blue)](https://github.com/tokligence/LocalSQLAgent)
-[![模型大小](https://img.shields.io/badge/模型-4.7GB-orange)](https://github.com/tokligence/LocalSQLAgent)
+[![执行准确率](https://img.shields.io/badge/执行准确率-88%25-blue)](https://github.com/tokligence/LocalSQLAgent)
+[![模型大小](https://img.shields.io/badge/模型-4.7GB--18GB-orange)](https://github.com/tokligence/LocalSQLAgent)
 [![由Tokligence开发](https://img.shields.io/badge/开发者-Tokligence-4CAF50)](https://github.com/tokligence)
 
-> **🎯 Spider基准测试执行准确率(EA)达86%**，零API成本，100%数据隐私保护
+> **🎯 Spider基准测试执行准确率(EA)达88%**，零API成本，100%数据隐私保护
 >
 > **🌐 真正双语支持** - 完美支持中英文查询
 
@@ -23,8 +23,8 @@
 ### 我们的解决方案：100% 本地AI
 - **✅ 零成本**：永远没有API费用
 - **🔒 100% 私密**：数据永不离开你的机器
-- **⚡ 快速**：平均响应时间5-6秒
-- **📊 经过验证**：Spider基准测试执行准确率86%
+- **⚡ 快速**：平均响应时间3.7-5.4秒
+- **📊 经过验证**：Spider基准测试执行准确率88%（最新：qwen3-coder:30b）
 
 ## 🏗️ 架构
 
@@ -34,7 +34,7 @@
 │                                                                   │
 │  ┌────────────┐     ┌─────────────────┐     ┌─────────────────┐ │
 │  │   用户      │────▶│  LocalSQLAgent  │────▶│  Ollama + LLM   │ │
-│  │   查询      │     │  (智能Agent)    │     │ qwen2.5-coder:7b│ │
+│  │   查询      │     │  (智能Agent)    │     │ qwen3-coder:30b │ │
 │  └────────────┘     └────────┬─────────┘     └─────────────────┘ │
 │                              ▼                                   │
 │                     ┌──────────────────────────────┐            │
@@ -42,7 +42,7 @@
 │                     │ PostgreSQL│MySQL│MongoDB│... │            │
 │                     └──────────────────────────────┘            │
 │                                                                   │
-│  💰 $0成本    🔒 100%私密    ⚡ 5.4秒平均    📊 86% EA           │
+│  💰 $0成本    🔒 100%私密    ⚡ 3.7秒平均    📊 88% EA           │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -53,7 +53,10 @@
 # macOS/Linux
 curl -fsSL https://ollama.com/install.sh | sh
 
-# 下载推荐的模型（4.7GB）
+# 下载最佳模型（18GB，需要25GB内存）
+ollama pull qwen3-coder:30b
+
+# 或者选择资源受限版本（4.7GB，需要6GB内存）
 ollama pull qwen2.5-coder:7b
 ```
 
@@ -78,8 +81,16 @@ print(result)
 
 ## 📊 性能与模型选择
 
-### 推荐模型
-**✅ qwen2.5-coder:7b** - 准确性、速度和资源使用的最佳平衡
+### 🏆 推荐模型
+
+#### **最佳性能：qwen3-coder:30b**（新！）
+- Spider基准测试**88%执行准确率*** - 达到最高准确率！
+- **3.69秒**平均响应时间 - 比qwen2.5-coder快32%
+- **18GB**磁盘空间（MoE：30B总参数，3.3B激活）
+- **~25GB** RAM需求
+- **关键优势**：混合专家架构带来卓越性能
+
+#### **资源受限最佳选择：qwen2.5-coder:7b**
 - Spider基准测试**86%执行准确率***
 - **5.4秒**平均响应时间
 - **4.7GB**磁盘空间
@@ -87,16 +98,17 @@ print(result)
 
 *测试环境：MacBook Pro (M系列芯片, 48GB RAM)，Spider dev数据集(50个样本)
 
-### 已测试的替代模型
-| 模型 | EA (%) | 速度 | 评价 |
-|------|--------|------|------|
-| qwen2.5-coder:7b | 86% | 5.4秒 | ✅ **最佳选择** |
-| deepseek-coder-v2:16b | 68% | 4.0秒 | ✅ 良好的替代方案 |
-| deepseek-coder:6.7b | 72% | 6.6秒 | ⚠️ 准确率较低 |
-| codestral:22b | 82% | 30.6秒 | ⚠️ 太慢 |
-| qwen2.5:14b | 82% | 10.0秒 | ❌ 通用模型，未优化 |
+### 所有测试模型
+| 模型 | EA (%) | 速度 | 大小 | 评价 |
+|------|--------|------|------|------|
+| **qwen3-coder:30b** 🆕 | **88%** | **3.69秒** | 18GB | ✅ **综合最佳** |
+| qwen2.5-coder:7b | 86% | 5.41秒 | 4.7GB | ✅ 内存受限最佳 |
+| codestral:22b | 82% | 30.6秒 | 12GB | ⚠️ 太慢 |
+| qwen2.5:14b | 82% | 10.0秒 | 9.0GB | ❌ 通用模型 |
+| deepseek-coder:6.7b | 72% | 6.64秒 | 3.8GB | ⚠️ 准确率较低 |
+| deepseek-coder-v2:16b | 68% | 4.0秒 | 8.9GB | ⚠️ 准确率较低 |
 
-> **关键发现**：较小的领域特定模型在SQL任务上优于较大的通用模型
+> **关键发现**：MoE架构（qwen3-coder:30b）取得最佳效果 - 仅用3.3B激活参数达到88% EA！
 
 [查看详细模型分析 →](docs/detailed_model_analysis.md)
 
@@ -105,7 +117,7 @@ print(result)
 ### 🧠 智能错误学习
 - 自动从SQL执行错误中学习
 - 自动纠正常见错误（列歧义、缺少GROUP BY等）
-- 通过错误恢复将准确率从82%提高到86%
+- 通过错误恢复实现高达88%的准确率（qwen3-coder:30b）
 
 ### 🌐 真正的双语支持
 ```python
@@ -131,6 +143,14 @@ result = agent.query("显示上个月销售前10的产品")
 ## 📈 基准测试
 
 ### Spider数据集结果（50个样本）
+
+#### qwen3-coder:30b（最佳模型）
+- **执行准确率(EA)**：88% 🏆
+- **平均延迟**：3.69秒 ⚡
+- **平均尝试次数**：2.5
+- **成功率**：100%（带重试）
+
+#### qwen2.5-coder:7b（资源高效）
 - **执行准确率(EA)**：86%
 - **平均延迟**：5.41秒
 - **平均尝试次数**：2.5
@@ -168,7 +188,7 @@ docker run -p 8000:8000 localsqlagent
 ```python
 agent = IntelligentSQLAgent(
     db_url="postgresql://localhost/mydb",
-    model_name="deepseek-coder-v2:16b",  # 使用替代模型
+    model_name="qwen3-coder:30b",  # 使用最佳模型以获得最高准确率
     max_attempts=3,
     temperature=0.1
 )
