@@ -91,8 +91,9 @@ print(result)
 ### Alternative Models Tested
 | Model | EA (%) | Speed | Verdict |
 |-------|----------|-------|---------|
-| qwen2.5-coder:7b | 86% | 5.4s | ✅ **Best Choice** |
+| qwen2.5-coder:7b | 86% | 5.4s | ✅ **Best choice** |
 | deepseek-coder-v2:16b | 68% | 4.0s | ✅ Good alternative |
+| deepseek-coder:6.7b | 72% | 6.6s | ⚠️ Lower accuracy |
 | codestral:22b | 82% | 30.6s | ⚠️ Too slow |
 | qwen2.5:14b | 82% | 10.0s | ❌ General model, not optimized |
 
